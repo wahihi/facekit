@@ -1,0 +1,30 @@
+{
+  "name": "blazeface_short",
+  "family": "blazeface",
+  "file": "face_detection_short_range.tflite",
+  "input": {
+    "width": 128,
+    "height": 128,
+    "color": "RGB",
+    "layout": "NHWC",
+    "normalize": {
+      "mean": [127.5, 127.5, 127.5],
+      "std":  [127.5, 127.5, 127.5]
+    }
+  },
+  "output": {
+    "regressors_index": 0,
+    "classificators_index": 1
+  },
+  "detection": {
+    "score_threshold": 0.5,
+    "iou_threshold": 0.3,
+    "max_faces": 10
+  },
+  "license": {
+    "tier": "bundled",
+    "redistributable": true,
+    "source": "MediaPipe BlazeFace short-range",
+    "note": "Apache 2.0. Model weights and code. Commercial use permitted. https://github.com/google/mediapipe"
+  }
+}

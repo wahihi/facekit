@@ -1,0 +1,40 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# Claude Code harness runtime state (not project source)
+.claude/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Embedding model weights (BYOM/Demo — research-licensed, not redistributable).
+# Only manifest.json is tracked; place the matching .tflite locally per CLAUDE.md.
+# Matches both the package's own assets/ and example/assets/.
+**/assets/models/*/*.tflite
+!assets/models/blazeface_short/*.tflite
+
+# Flutter/Dart/Pub related
+# Libraries should not include pubspec.lock, per https://dart.dev/guides/libraries/private-files#pubspeclock.
+/pubspec.lock
+**/doc/api/
+.dart_tool/
+.flutter-plugins-dependencies
+/build/
+/coverage/

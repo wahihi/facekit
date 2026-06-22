@@ -1,0 +1,25 @@
+{
+  "name": "arcface_buffalo_l",
+  "family": "arcface",
+  "file": "w600k_r50.tflite",
+  "input": {
+    "width": 112,
+    "height": 112,
+    "color": "RGB",
+    "layout": "NHWC",
+    "normalize": { "mean": [127.5, 127.5, 127.5], "std": [127.5, 127.5, 127.5] }
+  },
+  "output": { "dim": 512, "l2_normalize": true },
+  "alignment": { "type": "five_point_affine", "reference": "arcface_112" },
+  "matching": {
+    "metric": "cosine",
+    "threshold": 0.40,
+    "threshold_note": "PoC 임시값. 운영 전 ROC로 확정."
+  },
+  "license": {
+    "tier": "research",
+    "redistributable": false,
+    "source": "InsightFace buffalo_l (w600k_r50)",
+    "note": "비상업 연구 전용. 상업배포 금지. .tflite 파일은 저장소에 동봉되지 않음(BYOM/Demo) — https://github.com/deepinsight/insightface 에서 별도로 받아 이 폴더에 배치할 것."
+  }
+}

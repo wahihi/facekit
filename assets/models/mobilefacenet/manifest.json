@@ -1,0 +1,25 @@
+{
+  "name": "mobilefacenet",
+  "family": "mobilefacenet",
+  "file": "mobilefacenet.tflite",
+  "input": {
+    "width": 112,
+    "height": 112,
+    "color": "RGB",
+    "layout": "NHWC",
+    "normalize": { "mean": [127.5, 127.5, 127.5], "std": [127.5, 127.5, 127.5] }
+  },
+  "output": { "dim": 128, "l2_normalize": true },
+  "alignment": { "type": "five_point_affine", "reference": "arcface_112" },
+  "matching": {
+    "metric": "cosine",
+    "threshold": 0.40,
+    "threshold_note": "PoC 임시값. 운영 전 ROC로 확정."
+  },
+  "license": {
+    "tier": "research",
+    "redistributable": false,
+    "source": "MobileFaceNet (저사양 단말 실시간용 경량 임베딩)",
+    "note": "비상업 연구 전용으로 보수적으로 표기함 — 사용할 구체적인 배포본(예: OpenCV Zoo SFace 등)에 따라 라이선스가 다를 수 있으므로, .tflite를 실제로 소싱하기 전에 해당 배포본의 라이선스를 직접 확인해서 이 값을 갱신할 것. .tflite 파일은 저장소에 동봉되지 않음(BYOM/Demo)."
+  }
+}

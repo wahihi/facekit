@@ -1,0 +1,25 @@
+{
+  "name": "facenet512",
+  "family": "facenet",
+  "file": "facenet512.tflite",
+  "input": {
+    "width": 160,
+    "height": 160,
+    "color": "RGB",
+    "layout": "NHWC",
+    "normalize": { "mean": [0.0, 0.0, 0.0], "std": [1.0, 1.0, 1.0] }
+  },
+  "output": { "dim": 512, "l2_normalize": true },
+  "alignment": { "type": "five_point_affine", "reference": "facenet_160" },
+  "matching": {
+    "metric": "cosine",
+    "threshold": 0.40,
+    "threshold_note": "PoC 임시값. 운영 전 ROC로 확정."
+  },
+  "license": {
+    "tier": "research",
+    "redistributable": false,
+    "source": "FaceNet (davidsandberg/facenet 계열, CASIA-WebFace/VGGFace2 학습)",
+    "note": "비상업 연구 전용 가중치. 상업배포 금지. FaceNetAdapter는 manifest.input.normalize를 쓰지 않고 이미지별 prewhiten((x-mean(x))/std(x))을 직접 계산하므로 위 normalize 필드는 참고용(미사용)임. .tflite 파일은 저장소에 동봉되지 않음(BYOM/Demo)."
+  }
+}
