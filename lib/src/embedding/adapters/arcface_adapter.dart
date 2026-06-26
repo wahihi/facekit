@@ -1,12 +1,15 @@
 // ArcFace-family embedder adapter.
 //
-// Also covers AdaFace and MobileFaceNet: all three share the same 112x112
-// RGB, (pixel-mean)/std input convention and a flat (non-spatial) embedding
+// Also covers AdaFace and MobileFaceNet: all three share the same 112x112,
+// (pixel-mean)/std input convention and a flat (non-spatial) embedding
 // output, so one adapter implementation serves all three `family` values.
+// Color order is read from manifest.input.color rather than assumed — AdaFace
+// in particular expects BGR (cv2 convention), unlike InsightFace/ArcFace's RGB.
 //
-// Source: InsightFace model_zoo recognition preprocessing convention (MIT) —
-// only the pixel-normalisation constants/shape convention are used here, no
-// model weights or proprietary code.
+// Source: InsightFace model_zoo recognition preprocessing convention (MIT)
+// and AdaFace's documented BGR input convention (mk-minchul/AdaFace, MIT) —
+// only the pixel-normalisation constants/shape/color-order conventions are
+// used here, no model weights or proprietary code.
 
 import 'dart:typed_data';
 
@@ -28,6 +31,7 @@ class ArcfaceAdapter implements EmbedderAdapter {
       height: input.height,
       mean: input.normalize.mean,
       std: input.normalize.std,
+      swapToBgr: input.color == 'BGR',
     );
   }
 

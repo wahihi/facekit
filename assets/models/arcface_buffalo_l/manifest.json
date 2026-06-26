@@ -13,8 +13,8 @@
   "alignment": { "type": "five_point_affine", "reference": "arcface_112" },
   "matching": {
     "metric": "cosine",
-    "threshold": 0.40,
-    "threshold_note": "PoC 임시값. 운영 전 ROC로 확정."
+    "threshold": 0.26,
+    "threshold_note": "LFW(logasja/lfw) 200쌍(동일인 100 + 타인 100), 250x250 funneled crop을 112x112로 리사이즈만 하고(5점 랜드마크 정렬 미적용) 측정한 EER 지점. EER=8.5%, 해당 임계값에서 clean 정확도 91.5%. 저화질(24px 다운/업샘플) 조건에서는 EER이 25%로 악화되고 최적 임계값이 0.33으로 이동함 — 이 값은 clean 기준이며 캡처 품질이 나쁜 환경에서는 보수적이지 않음. 소규모 측정치이며 정식 ROC 검증 대체 아님. 방법론/원자료: doc/KR/adaface_verification.md, tool/model_verification/."
   },
   "license": {
     "tier": "research",

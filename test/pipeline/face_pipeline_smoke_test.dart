@@ -46,8 +46,8 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const manifestPath = 'assets/models/arcface_buffalo_l/manifest.json';
-  const modelPath =
-      '/home/wahihi/development/models/w600k_r50_tf/w600k_r50_float32.tflite';
+  final modelPath =
+      '${Platform.environment['HOME']}/development/models/w600k_r50_tf/w600k_r50_float32.tflite';
   final modelExists = File(modelPath).existsSync();
 
   test(

@@ -1,0 +1,18 @@
+{
+  "arcface": {
+    "threshold_clean_eer": 0.2634725272655487,
+    "eer_clean": 0.08499999999999999,
+    "accuracy_clean_at_threshold": 0.915,
+    "accuracy_degraded_at_clean_threshold": 0.7,
+    "threshold_degraded_eer": 0.3329097628593445,
+    "eer_degraded": 0.25
+  },
+  "adaface": {
+    "threshold_clean_eer": 0.21056319773197174,
+    "eer_clean": 0.020000000000000014,
+    "accuracy_clean_at_threshold": 0.98,
+    "accuracy_degraded_at_clean_threshold": 0.835,
+    "threshold_degraded_eer": 0.22340252995491028,
+    "eer_degraded": 0.14
+  }
+}

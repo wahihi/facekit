@@ -21,8 +21,8 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const manifestPath = 'assets/models/arcface_buffalo_l/manifest.json';
-  const modelPath =
-      '/home/wahihi/development/models/w600k_r50_tf/w600k_r50_float32.tflite';
+  final modelPath =
+      '${Platform.environment['HOME']}/development/models/w600k_r50_tf/w600k_r50_float32.tflite';
 
   final modelExists = File(modelPath).existsSync();
 
@@ -54,5 +54,48 @@ void main() {
       embedder.dispose();
     },
     skip: modelExists ? false : 'w600k_r50_float32.tflite not present locally',
+  );
+
+  // AdaFace's exported graph has two output tensors — "feature" [1,512] and
+  // a pre-normalisation "norm" [1,1] scalar (confirmed via the ONNX export,
+  // see export_onnx.py output_names=['feature','norm']) — unlike ArcFace's
+  // single-output graph above. embed() must consume only the first output
+  // and not crash on the second; see TfliteFaceEmbedder.embed and
+  // TfliteRunner.zeroTensor.
+  const adafaceManifestPath = 'assets/models/adaface_ir101_webface12m/manifest.json';
+  final adafaceModelPath =
+      '${Platform.environment['HOME']}/development/models/adaface/adaface_ir101_webface12m.tflite';
+
+  final adafaceModelExists = File(adafaceModelPath).existsSync();
+
+  test(
+    'AdaFace model (2 output tensors: feature+norm) loads and produces a 512-dim embedding',
+    () async {
+      final manifestJson = File(adafaceManifestPath).readAsStringSync();
+      final manifest = ModelManifest.fromJsonString(manifestJson);
+
+      final embedder = await TfliteFaceEmbedder.fromFile(
+        tflitePath: adafaceModelPath,
+        manifest: manifest,
+      );
+
+      final grey = Uint8List(112 * 112 * 3)..fillRange(0, 112 * 112 * 3, 128);
+      final face = AlignedFace(rgbBytes: grey, size: 112);
+
+      final embedding = await embedder.embed(face);
+
+      expect(embedding.dim, 512);
+      double normSq = 0.0;
+      for (final v in embedding.vector) {
+        normSq += v * v;
+      }
+      expect(normSq, closeTo(1.0, 1e-3));
+
+      embedder.dispose();
+    },
+    skip: adafaceModelExists
+        ? false
+        : 'adaface_ir101_webface12m.tflite not present locally '
+            '(local TFLite conversion currently OOMs on this machine — see doc/KR/adaface_verification.md)',
   );
 }

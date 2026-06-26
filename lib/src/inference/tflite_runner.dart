@@ -50,10 +50,24 @@ class TfliteRunner {
   void close() => _interpreter.close();
 }
 
+/// Builds a nested zero-filled `List` matching [shape], for use as a
+/// pre-allocated buffer with [TfliteRunner.runForMultipleOutputs] when a
+/// tensor's contents aren't needed (e.g. AdaFace's secondary "norm" output).
+Object zeroTensor(List<int> shape) {
+  if (shape.length == 1) return List.filled(shape[0], 0.0);
+  return List.generate(shape[0], (_) => zeroTensor(shape.sublist(1)));
+}
+
 // ── input preparation utilities ───────────────────────────────────────────────
 
 /// Converts an RGB888 byte array into a float32 NHWC tensor normalised by
 /// (pixel - mean) / std, matching the manifest InputSpec.
+///
+/// [swapToBgr] reorders channels to B,G,R before normalising — set this when
+/// `manifest.input.color == 'BGR'` (e.g. AdaFace, which assumes cv2-style BGR
+/// input, unlike InsightFace/ArcFace's RGB convention). [mean]/[std] are
+/// still indexed 0/1/2 in the *output* channel order, matching how the
+/// manifest's normalize arrays are written.
 ///
 /// Returns a [List] shaped [1, height, width, 3] for use as tflite input.
 List<List<List<List<double>>>> prepareInputTensor({
@@ -62,6 +76,7 @@ List<List<List<List<double>>>> prepareInputTensor({
   required int height,
   required List<double> mean,
   required List<double> std,
+  bool swapToBgr = false,
 }) {
   return List.generate(
     1,
@@ -71,10 +86,13 @@ List<List<List<List<double>>>> prepareInputTensor({
         width,
         (col) {
           final idx = (row * width + col) * 3;
+          final r = rgbBytes[idx], g = rgbBytes[idx + 1], b = rgbBytes[idx + 2];
+          final c0 = swapToBgr ? b : r;
+          final c2 = swapToBgr ? r : b;
           return [
-            (rgbBytes[idx]     - mean[0]) / std[0],
-            (rgbBytes[idx + 1] - mean[1]) / std[1],
-            (rgbBytes[idx + 2] - mean[2]) / std[2],
+            (c0 - mean[0]) / std[0],
+            (g  - mean[1]) / std[1],
+            (c2 - mean[2]) / std[2],
           ];
         },
       ),

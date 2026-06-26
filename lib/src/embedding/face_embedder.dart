@@ -79,9 +79,18 @@ class TfliteFaceEmbedder implements FaceEmbedder {
   Future<Embedding> embed(AlignedFace face) async {
     final input = _adapter.preprocess(face, _manifest);
     final dim = _manifest.output.dim!;
-    final output = List.generate(1, (_) => List.filled(dim, 0.0));
-    _runner.run(input, output);
-    return _adapter.postprocess(output[0], _manifest);
+    // Output tensor 0 is always the embedding. Some families (e.g. AdaFace,
+    // whose graph also exposes a pre-normalisation "norm" scalar) have
+    // additional output tensors that this SDK doesn't use — those still need
+    // a correctly-shaped buffer or tflite_flutter's runForMultipleInputs
+    // throws on the unfilled map entry.
+    final outputs = <int, Object>{0: List.generate(1, (_) => List.filled(dim, 0.0))};
+    for (var i = 1; i < _runner.outputCount; i++) {
+      outputs[i] = zeroTensor(_runner.outputShape(i));
+    }
+    _runner.runForMultipleOutputs(input, outputs);
+    final embedding = (outputs[0] as List)[0] as List<double>;
+    return _adapter.postprocess(embedding, _manifest);
   }
 
   void dispose() => _runner.close();
