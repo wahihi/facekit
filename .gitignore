@@ -29,6 +29,7 @@ migrate_working_dir/
 # Matches both the package's own assets/ and example/assets/.
 **/assets/models/*/*.tflite
 !assets/models/blazeface_short/*.tflite
+!assets/models/face_landmark_478/*.tflite
 
 # Flutter/Dart/Pub related
 # Libraries should not include pubspec.lock, per https://dart.dev/guides/libraries/private-files#pubspeclock.

@@ -53,6 +53,30 @@ class Point {
   String toString() => 'Point($x, $y)';
 }
 
+/// 3-D point in pixel coordinates (x, y) plus a model-relative depth (z).
+/// Used for dense landmark models (e.g. face mesh) where z has no fixed
+/// physical unit — only relative ordering/scale within the same model output
+/// is meaningful.
+class Point3D {
+  final double x;
+  final double y;
+  final double z;
+
+  const Point3D(this.x, this.y, this.z);
+
+  @override
+  String toString() => 'Point3D($x, $y, $z)';
+}
+
+/// Dense face landmarks from a face-mesh-style model (e.g. 478 points),
+/// distinct from [DetectedFace.landmarks]' sparse 6 keypoints. Coordinates
+/// are in pixel space of the [FaceImage] the landmarker was run against.
+class FaceLandmarks {
+  final List<Point3D> points;
+
+  const FaceLandmarks({required this.points});
+}
+
 /// Single detected face from the detector.
 /// [landmarks]: BlazeFace 6 keypoints — [leftEye, rightEye, nose, mouth, leftEar, rightEar]
 class DetectedFace {

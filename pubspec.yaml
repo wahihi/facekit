@@ -21,3 +21,4 @@ dev_dependencies:
 flutter:
   assets:
     - assets/models/blazeface_short/
+    - assets/models/face_landmark_478/

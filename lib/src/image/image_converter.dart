@@ -103,3 +103,26 @@ FaceImage resizeNearest(FaceImage src, int targetWidth, int targetHeight) {
 
   return FaceImage(rgbBytes: dst, width: targetWidth, height: targetHeight);
 }
+
+/// Crops [region] out of [src], clamped to the image bounds.
+///
+/// Used to extract a square face ROI (with margin) ahead of a landmark model
+/// that — unlike the detector — expects an already-cropped, roughly-centred
+/// face rather than a full frame.
+FaceImage cropFaceImage(FaceImage src, Rect region) {
+  final left = region.left.floor().clamp(0, src.width - 1);
+  final top = region.top.floor().clamp(0, src.height - 1);
+  final right = region.right.ceil().clamp(left + 1, src.width);
+  final bottom = region.bottom.ceil().clamp(top + 1, src.height);
+  final width = right - left;
+  final height = bottom - top;
+
+  final dst = Uint8List(width * height * 3);
+  for (int row = 0; row < height; row++) {
+    final srcRowStart = ((top + row) * src.width + left) * 3;
+    final dstRowStart = row * width * 3;
+    dst.setRange(dstRowStart, dstRowStart + width * 3, src.rgbBytes, srcRowStart);
+  }
+
+  return FaceImage(rgbBytes: dst, width: width, height: height);
+}

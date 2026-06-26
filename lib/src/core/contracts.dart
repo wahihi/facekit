@@ -25,11 +25,23 @@ abstract class FaceMatcher {
   MatchResult match(Embedding probe, List<Enrollment> gallery);
 }
 
-// ── Pro tier (defined here so Free code can reference the types) ─────────────
+abstract class FaceLandmarker {
+  /// Returns dense landmarks for [face] (detected within [image]), or null
+  /// if the model can't find a face in the cropped region.
+  Future<FaceLandmarks?> detectLandmarks(FaceImage image, DetectedFace face);
+}
+
+// ── Liveness ───────────────────────────────────────────────────────────────
+// The interface is shared across tiers; Free ships a basic blink-only
+// implementation (BlinkLivenessDetector), Pro adds stronger multi-signal
+// checks (e.g. replay-attack resistance) behind the same contract.
 
 abstract class LivenessDetector {
-  /// Accumulates [face] observations and returns the current liveness verdict.
-  LivenessResult update(DetectedFace face);
+  /// Accumulates [landmarks] observations (captured at [timestampMs]) and
+  /// returns the current liveness verdict. [timestampMs] is supplied by the
+  /// caller (e.g. `DateTime.now().millisecondsSinceEpoch`) rather than read
+  /// internally, so implementations stay deterministic/testable.
+  LivenessResult update(FaceLandmarks landmarks, int timestampMs);
   void reset();
 }
 

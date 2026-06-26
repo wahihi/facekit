@@ -1,0 +1,19 @@
+{
+  "name": "face_landmark_478",
+  "family": "face_landmark",
+  "file": "face_landmark_478.tflite",
+  "input": {
+    "width": 256,
+    "height": 256,
+    "color": "RGB",
+    "layout": "NHWC",
+    "normalize": { "mean": [0.0, 0.0, 0.0], "std": [255.0, 255.0, 255.0] }
+  },
+  "output": {},
+  "license": {
+    "tier": "bundled",
+    "redistributable": true,
+    "source": "MediaPipe Face Landmarker (face_landmarks_detector.tflite, extracted from the official face_landmarker.task bundle)",
+    "note": "Apache 2.0. Model weights and code. Commercial use permitted. https://github.com/google/mediapipe and https://www.kaggle.com/models/mediapipe/face-landmarks-detection (model card confirms Apache 2.0). Extracted via `unzip face_landmarker.task` — the .task container is a zip archive bundling face_detector.tflite + face_landmarks_detector.tflite + face_blendshapes.tflite + geometry metadata; only face_landmarks_detector.tflite is used here (renamed face_landmark_478.tflite) since detection is already covered by blazeface_short and blendshapes/geometry are unused by this SDK."
+  }
+}

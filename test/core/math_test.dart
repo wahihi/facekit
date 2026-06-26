@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:facekit/src/core/math.dart';
+import 'package:facekit/src/core/models.dart';
 
 void main() {
   group('l2Normalize', () {
@@ -67,6 +68,55 @@ void main() {
     test('3-4-5 right triangle', () {
       final v = Float32List.fromList([3.0, 4.0]);
       expect(l2Norm(v), closeTo(5.0, 1e-6));
+    });
+  });
+
+  group('eyeAspectRatio', () {
+    // Point order: [outerCorner, upperOuter, upperInner, innerCorner, lowerInner, lowerOuter].
+    test('open eye → higher ratio (~0.4)', () {
+      final openEye = [
+        const Point(0, 0),   // outerCorner
+        const Point(2, -2),  // upperOuter
+        const Point(8, -2),  // upperInner
+        const Point(10, 0),  // innerCorner
+        const Point(8, 2),   // lowerInner
+        const Point(2, 2),   // lowerOuter
+      ];
+      expect(eyeAspectRatio(openEye), closeTo(0.4, 1e-6));
+    });
+
+    test('closed eye → much lower ratio (~0.04)', () {
+      final closedEye = [
+        const Point(0, 0),
+        const Point(2, -0.2),
+        const Point(8, -0.2),
+        const Point(10, 0),
+        const Point(8, 0.2),
+        const Point(2, 0.2),
+      ];
+      expect(eyeAspectRatio(closedEye), closeTo(0.04, 1e-6));
+    });
+
+    test('closed eye ratio is well below open eye ratio', () {
+      final openEye = [
+        const Point(0, 0), const Point(2, -2), const Point(8, -2),
+        const Point(10, 0), const Point(8, 2), const Point(2, 2),
+      ];
+      final closedEye = [
+        const Point(0, 0), const Point(2, -0.2), const Point(8, -0.2),
+        const Point(10, 0), const Point(8, 0.2), const Point(2, 0.2),
+      ];
+      expect(eyeAspectRatio(closedEye), lessThan(eyeAspectRatio(openEye)));
+    });
+
+    test('throws when given other than 6 points', () {
+      expect(() => eyeAspectRatio([const Point(0, 0), const Point(1, 1)]),
+          throwsArgumentError);
+    });
+
+    test('throws on degenerate input (corner points coincide)', () {
+      final degenerate = List.generate(6, (_) => const Point(5, 5));
+      expect(() => eyeAspectRatio(degenerate), throwsArgumentError);
     });
   });
 }

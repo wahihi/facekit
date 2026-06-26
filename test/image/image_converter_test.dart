@@ -93,4 +93,38 @@ void main() {
       expect(dst.rgbBytes.length, 5 * 5 * 3);
     });
   });
+
+  group('cropFaceImage', () {
+    test('crops the requested region exactly when fully in bounds', () {
+      // 4×4 image, row-major colours 0..15 encoded in the R channel.
+      final rgb = Uint8List(4 * 4 * 3);
+      for (int i = 0; i < 16; i++) {
+        rgb[i * 3] = i;
+      }
+      final src = FaceImage(rgbBytes: rgb, width: 4, height: 4);
+
+      final cropped = cropFaceImage(src, const Rect(left: 1, top: 1, right: 3, bottom: 3));
+      expect(cropped.width, 2);
+      expect(cropped.height, 2);
+      // Source indices for region [1,1]..[3,3): row1 cols1-2 = 5,6 ; row2 cols1-2 = 9,10
+      expect(cropped.rgbBytes[0], 5);
+      expect(cropped.rgbBytes[3], 6);
+      expect(cropped.rgbBytes[6], 9);
+      expect(cropped.rgbBytes[9], 10);
+    });
+
+    test('clamps a region that runs off the top-left edge', () {
+      final src = FaceImage(rgbBytes: Uint8List(4 * 4 * 3), width: 4, height: 4);
+      final cropped = cropFaceImage(src, const Rect(left: -5, top: -5, right: 2, bottom: 2));
+      expect(cropped.width, 2);
+      expect(cropped.height, 2);
+    });
+
+    test('clamps a region that runs off the bottom-right edge', () {
+      final src = FaceImage(rgbBytes: Uint8List(4 * 4 * 3), width: 4, height: 4);
+      final cropped = cropFaceImage(src, const Rect(left: 2, top: 2, right: 100, bottom: 100));
+      expect(cropped.width, 2);
+      expect(cropped.height, 2);
+    });
+  });
 }
