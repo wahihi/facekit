@@ -11,10 +11,11 @@
 // holding up a static photo never blinks, so it never reaches the matcher.
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show Clipboard, ClipboardData, rootBundle;
 
 import 'package:facekit/facekit.dart';
 
+import 'benchmark.dart';
 import 'face_overlay.dart';
 
 late List<CameraDescription> _cameras;
@@ -72,6 +73,22 @@ class _RecognitionPageState extends State<RecognitionPage> {
   Size _overlayImageSize = Size.zero;
   String? _matchLabel; // "이름 (유사도 0.xx)" while a live identify match holds
 
+  // Latest frame that had a detected face, frozen for the benchmark button —
+  // yuv420ToFaceImage always allocates a fresh buffer, so holding this
+  // reference across frames is safe (the camera plugin can't mutate it).
+  FaceImage? _lastFaceImage;
+  bool _benchmarking = false;
+  bool _useNnApiForBenchmark = false;
+
+  // Lazily built only when the NNAPI toggle is first used — a second
+  // detector/embedder pair pointed at the same models but with the NNAPI
+  // delegate on, so the benchmark can compare CPU-only vs. NNAPI on the same
+  // device without touching the main pipeline used for real enroll/identify.
+  ModelManifest? _detectorManifest;
+  ModelManifest? _embedderManifest;
+  BlazeFaceDetector? _nnapiDetector;
+  TfliteFaceEmbedder? _nnapiEmbedder;
+
   @override
   void initState() {
     super.initState();
@@ -90,6 +107,7 @@ class _RecognitionPageState extends State<RecognitionPage> {
             'packages/facekit/assets/models/blazeface_short/face_detection_short_range.tflite',
         manifest: detectorManifest,
       );
+      _detectorManifest = detectorManifest;
 
       final embedderManifest = ModelManifest.fromJsonString(
         await rootBundle.loadString(
@@ -100,6 +118,7 @@ class _RecognitionPageState extends State<RecognitionPage> {
         tfliteAssetPath: 'assets/models/arcface_buffalo_l/w600k_r50.tflite',
         manifest: embedderManifest,
       );
+      _embedderManifest = embedderManifest;
 
       _pipeline = FacePipeline(
         detector: detector,
@@ -231,6 +250,8 @@ class _RecognitionPageState extends State<RecognitionPage> {
         return;
       }
 
+      _lastFaceImage = image;
+
       final landmarks = await landmarker.detectLandmarks(image, face);
       final liveness = landmarks == null
           ? const LivenessResult(state: LivenessState.pending)
@@ -289,10 +310,96 @@ class _RecognitionPageState extends State<RecognitionPage> {
     setState(() => _status = text);
   }
 
+  /// Lazily builds a second detector+embedder pair pointed at the same model
+  /// files but with the NNAPI delegate on, for the benchmark toggle. Built
+  /// once and cached — switching the toggle on and off doesn't reload.
+  Future<void> _ensureNnApiModels() async {
+    if (_nnapiDetector != null && _nnapiEmbedder != null) return;
+    final detectorManifest = _detectorManifest;
+    final embedderManifest = _embedderManifest;
+    if (detectorManifest == null || embedderManifest == null) return;
+
+    _nnapiDetector = await BlazeFaceDetector.fromAsset(
+      tfliteAssetPath:
+          'packages/facekit/assets/models/blazeface_short/face_detection_short_range.tflite',
+      manifest: detectorManifest,
+      useNnApi: true,
+    );
+    _nnapiEmbedder = await TfliteFaceEmbedder.fromAsset(
+      tfliteAssetPath: 'assets/models/arcface_buffalo_l/w600k_r50.tflite',
+      manifest: embedderManifest,
+      useNnApi: true,
+    );
+  }
+
+  /// Runs the benchmark on the last frame that had a face in it, then shows
+  /// the result in a dialog (with a copy button) so the numbers can be read
+  /// off-device without adb — see doc/KR/benchmark.md. Toggling
+  /// [_useNnApiForBenchmark] swaps in NNAPI-delegated detector/embedder
+  /// instances instead of the CPU-only ones the main pipeline uses, so the
+  /// two runs are comparable on the same device.
+  Future<void> _runBenchmark() async {
+    final pipeline = _pipeline;
+    final image = _lastFaceImage;
+    if (pipeline == null || image == null) {
+      _setStatus('먼저 카메라에 얼굴을 비춰주세요.');
+      return;
+    }
+
+    setState(() => _benchmarking = true);
+    _setStatus('벤치마크 실행 중... (35회 추론, 잠시 기다려주세요)');
+    try {
+      FaceDetector detector = pipeline.detector;
+      FaceEmbedder embedder = pipeline.embedder;
+      if (_useNnApiForBenchmark) {
+        await _ensureNnApiModels();
+        detector = _nnapiDetector ?? detector;
+        embedder = _nnapiEmbedder ?? embedder;
+      }
+
+      final result = await runBenchmark(
+        detector: detector,
+        aligner: pipeline.aligner,
+        embedder: embedder,
+        image: image,
+      );
+      if (!mounted) return;
+      _setStatus('벤치마크 완료');
+      final modeLabel = _useNnApiForBenchmark ? '[NNAPI]' : '[CPU]';
+      final reportText = '$modeLabel\n${result.toReportText()}';
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('벤치마크 결과 $modeLabel'),
+          content: SelectableText(reportText),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: reportText));
+                _setStatus('결과를 클립보드에 복사했어요.');
+              },
+              child: const Text('복사'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('닫기'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      _setStatus('벤치마크 실패: $e');
+    } finally {
+      if (mounted) setState(() => _benchmarking = false);
+    }
+  }
+
   @override
   void dispose() {
     _controller?.dispose();
     _landmarker?.dispose();
+    _nnapiDetector?.dispose();
+    _nnapiEmbedder?.dispose();
     _nameController.dispose();
     super.dispose();
   }
@@ -390,6 +497,22 @@ class _RecognitionPageState extends State<RecognitionPage> {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 4),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: const Text('NNAPI 가속 사용 (벤치마크용)'),
+                  value: _useNnApiForBenchmark,
+                  onChanged: _benchmarking
+                      ? null
+                      : (v) => setState(() => _useNnApiForBenchmark = v),
+                ),
+                OutlinedButton(
+                  onPressed: (_pipeline == null || _benchmarking)
+                      ? null
+                      : _runBenchmark,
+                  child: Text(_benchmarking ? '벤치마크 실행 중...' : '벤치마크 실행'),
                 ),
               ],
             ),

@@ -43,10 +43,11 @@ class BlazeFaceDetector implements FaceDetector {
   static Future<BlazeFaceDetector> fromAsset({
     required String tfliteAssetPath,
     required ModelManifest manifest,
+    bool useNnApi = false,
   }) async {
     manifest.validate();
     manifest.assertLoadable(isReleaseBuild: kReleaseMode);
-    final runner = await TfliteRunner.fromAsset(tfliteAssetPath);
+    final runner = await TfliteRunner.fromAsset(tfliteAssetPath, useNnApi: useNnApi);
     return BlazeFaceDetector._(
       runner:  runner,
       spec:    manifest.detection!,
@@ -58,10 +59,11 @@ class BlazeFaceDetector implements FaceDetector {
   static Future<BlazeFaceDetector> fromFile({
     required String tflitePath,
     required ModelManifest manifest,
+    bool useNnApi = false,
   }) async {
     manifest.validate();
     manifest.assertLoadable(isReleaseBuild: kReleaseMode);
-    final runner = await TfliteRunner.fromFile(tflitePath);
+    final runner = await TfliteRunner.fromFile(tflitePath, useNnApi: useNnApi);
     return BlazeFaceDetector._(
       runner:  runner,
       spec:    manifest.detection!,

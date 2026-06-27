@@ -13,17 +13,34 @@ class TfliteRunner {
   TfliteRunner._(this._interpreter);
 
   /// Loads a model from a Flutter asset path (e.g. 'assets/models/foo/bar.tflite').
-  static Future<TfliteRunner> fromAsset(String assetPath) async {
+  ///
+  /// [useNnApi] delegates inference to Android's NNAPI (NPU/DSP/GPU, whatever
+  /// the device exposes) instead of the default CPU-only reference kernels.
+  /// No-op on non-Android platforms. Off by default — callers should turn it
+  /// on deliberately, since not every device has a working NNAPI driver.
+  static Future<TfliteRunner> fromAsset(
+    String assetPath, {
+    bool useNnApi = false,
+  }) async {
     // Interpreter.fromAsset is async in 0.12.x (uses rootBundle).
-    final interpreter = await Interpreter.fromAsset(assetPath);
+    final options = useNnApi
+        ? (InterpreterOptions()..useNnApiForAndroid = true)
+        : null;
+    final interpreter = await Interpreter.fromAsset(assetPath, options: options);
     return TfliteRunner._(interpreter);
   }
 
   /// Loads a model from an absolute file-system path.
   /// Useful in tests and non-Flutter Dart contexts.
   /// Note: Interpreter.fromFile is synchronous in 0.12.x.
-  static Future<TfliteRunner> fromFile(String filePath) async {
-    final interpreter = Interpreter.fromFile(File(filePath));
+  static Future<TfliteRunner> fromFile(
+    String filePath, {
+    bool useNnApi = false,
+  }) async {
+    final options = useNnApi
+        ? (InterpreterOptions()..useNnApiForAndroid = true)
+        : null;
+    final interpreter = Interpreter.fromFile(File(filePath), options: options);
     return TfliteRunner._(interpreter);
   }
 

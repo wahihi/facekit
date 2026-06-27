@@ -48,10 +48,11 @@ class TfliteFaceEmbedder implements FaceEmbedder {
   static Future<TfliteFaceEmbedder> fromAsset({
     required String tfliteAssetPath,
     required ModelManifest manifest,
+    bool useNnApi = false,
   }) async {
     manifest.validate();
     manifest.assertLoadable(isReleaseBuild: kReleaseMode);
-    final runner = await TfliteRunner.fromAsset(tfliteAssetPath);
+    final runner = await TfliteRunner.fromAsset(tfliteAssetPath, useNnApi: useNnApi);
     return TfliteFaceEmbedder._(
       runner: runner,
       manifest: manifest,
@@ -64,10 +65,11 @@ class TfliteFaceEmbedder implements FaceEmbedder {
   static Future<TfliteFaceEmbedder> fromFile({
     required String tflitePath,
     required ModelManifest manifest,
+    bool useNnApi = false,
   }) async {
     manifest.validate();
     manifest.assertLoadable(isReleaseBuild: kReleaseMode);
-    final runner = await TfliteRunner.fromFile(tflitePath);
+    final runner = await TfliteRunner.fromFile(tflitePath, useNnApi: useNnApi);
     return TfliteFaceEmbedder._(
       runner: runner,
       manifest: manifest,
