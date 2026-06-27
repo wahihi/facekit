@@ -47,6 +47,35 @@ ArcFace/AdaFace 때는 LFW 200쌍으로 직접 EER을 측정해 임계값을 새
 상수이므로 위반은 아니지만 — **검증되지 않은 값이라는 한계는 명확히 남는다.** 실기기로
 실제 깜빡임 영상을 찍어서 재측정하는 게 다음 단계다.
 
+## example 앱 통합 (2026-06-27 추가)
+
+`MediaPipeFaceLandmarker` + `BlinkLivenessDetector`를 `example/lib/main.dart`에 연결했다.
+이제 카메라 프레임마다(등록/인식 버튼 상태와 무관하게) 항상 detect→landmark→liveness가
+돌고, 결과가 `CameraPreview` 위 `FaceOverlayPainter`([example/lib/face_overlay.dart](../../example/lib/face_overlay.dart))로
+그려진다:
+
+- 얼굴 박스 + 좌우 눈 6점씩(EAR에 쓰는 점) 오버레이.
+- 라이브니스 `pending`이면 노란 박스 + "눈을 깜빡여주세요", `passed`이면 초록 박스.
+- **`enroll`/`identify` 둘 다 라이브니스 `passed`가 될 때까지 매칭을 미룬다** — 정지 사진을
+  들이대면 깜빡임이 절대 발생하지 않으므로 매처(matcher)까지 도달하지 못한다. 이게 "사진
+  대면 → 차단" 데모 시나리오의 실제 동작 경로다.
+- 인식 성공 시 이름+유사도가 박스 라벨에도 표시된다(상태 텍스트와 별개로).
+
+라이브러리 공개 API(`lib/facekit.dart`)에 `MediaPipeFaceLandmarker`/`BlinkLivenessDetector`
+export를 추가했다 — 이전엔 둘 다 패키지 외부(example 포함)에서 import할 수 없었다.
+
+### 좌표 변환 — 가장 까다로웠던 부분
+
+`startImageStream`이 주는 `CameraImage`는 **원본 센서 방향**(보통 가로로 긴 1920×1080류)
+그대로다. `CameraPreview` 위젯은 `controller.value.deviceOrientation` 기준으로 네이티브
+프리뷰를 `RotatedBox`로 추가 보정해 보여준다(camera 0.11.4의 `CameraPreview._getQuarterTurns()`
+로직, Android만 해당 — iOS 네이티브 프리뷰는 이미 올바른 방향). 따라서 박스/랜드마크 좌표를
+그대로 그리면 디바이스를 기본 방향(`portraitUp`)이 아닌 자세로 들었을 때 어긋난다.
+
+`face_overlay.dart`의 `mapImagePointToPreview()`가 camera 패키지와 **동일한 회전 테이블을
+재구현**해 좌표를 변환한다(추측이 아니라 camera 패키지 소스에서 직접 옮긴 것). 전면 카메라는
+좌우 미러링(셀카 컨벤션)도 적용한다.
+
 ## 한계 (정직하게)
 
 - **정지 사진 방어는 된다, 그 이상은 아니다.** 평평한 사진은 EAR이 절대 변하지 않으므로
@@ -59,10 +88,16 @@ ArcFace/AdaFace 때는 LFW 200쌍으로 직접 EER을 측정해 임계값을 새
   실측 데이터 없음.
 - `face_landmarker_smoke_test.dart`는 합성 회색 이미지로 모델이 크래시 없이 478점을 뱉는지만
   확인한다. 실제 얼굴 사진으로 랜드마크 좌표가 진짜 눈/입 위치에 맞게 찍히는지는 — 이 환경에
-  카메라/실기기가 없어 **시각적으로 확인하지 못했다** (UI 오버레이 작업과 같은 한계).
-- `FacePipeline`이나 example 앱에는 아직 연결하지 않았다 — 이번 범위는 엔진(랜드마커+EAR+
-  상태머신)까지. 카메라 프레임으로 실제 동작시키는 건 UI 오버레이 작업과 함께 묶어서
-  다음 단계로 진행하는 게 자연스럽다.
+  카메라/실기기가 없어 **시각적으로 확인하지 못했다**.
+- **좌표 변환 로직도 같은 이유로 실기기 시각 검증을 못 했다.** `mapImagePointToPreview()`의
+  회전/스케일 수식 자체는 단위 테스트(`example/test/face_overlay_test.dart`, 모서리 점 매핑
+  11개 케이스)로 검증했고 camera 패키지 소스의 회전 테이블을 그대로 따랐지만, 전면 카메라
+  미러링 방향이나 `deviceOrientation` 콜백이 실제 디바이스에서 기대대로 들어오는지는 카메라/
+  실기기가 없어 확인하지 못했다. 다음 단계에서 실기기로 미러링 방향과 회전 보정을 눈으로
+  확인하는 게 필요하다.
+- 매 프레임 detect+landmark가 항상 돌게 바뀌어서(이전엔 인식/등록 중에만 detect) CPU 사용량이
+  늘었다 — 모바일 실기기에서 프레임 드롭 여부는 미측정(`doc/KR/benchmark.md`도 실기기 측정이
+  아님, 같은 한계).
 
 ## 테스트
 
@@ -71,3 +106,5 @@ ArcFace/AdaFace 때는 LFW 200쌍으로 직접 EER을 측정해 임계값을 새
 - `test/landmark/face_landmarker_smoke_test.dart` — 실제 동봉 모델 로드 + 478점 출력 확인
   (BYOM 아니므로 항상 실행, graceful skip 없음)
 - `test/liveness/blink_liveness_detector_test.dart` — 합성 EAR 시퀀스로 상태머신 검증
+- `example/test/face_overlay_test.dart` — 좌표 회전/스케일/미러링 순수 함수 테스트(실기기 없이
+  검증 가능한 유일한 부분)

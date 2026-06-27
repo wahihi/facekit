@@ -1,14 +1,21 @@
 // facekit example — register a face, then recognize it live from the camera.
 //
-// Loads BlazeFace (bundled with the facekit package) for detection and
-// ArcFace buffalo_l (BYOM/Demo, bundled only in this example app's own
-// assets — see assets/models/arcface_buffalo_l/) for embedding, then drives
-// FacePipeline end-to-end against the device camera feed.
+// Loads BlazeFace (bundled with the facekit package) for detection,
+// MediaPipe Face Landmarker (also bundled, Apache 2.0) for blink-based
+// liveness, and ArcFace buffalo_l (BYOM/Demo, bundled only in this example
+// app's own assets — see assets/models/arcface_buffalo_l/) for embedding,
+// then drives FacePipeline end-to-end against the device camera feed.
+//
+// Every frame draws a box overlay (see face_overlay.dart) over the detected
+// face, and gates enroll/identify on `BlinkLivenessDetector` passing first —
+// holding up a static photo never blinks, so it never reaches the matcher.
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 import 'package:facekit/facekit.dart';
+
+import 'face_overlay.dart';
 
 late List<CameraDescription> _cameras;
 
@@ -41,6 +48,7 @@ class RecognitionPage extends StatefulWidget {
 class _RecognitionPageState extends State<RecognitionPage> {
   CameraController? _controller;
   FacePipeline? _pipeline;
+  MediaPipeFaceLandmarker? _landmarker;
   final List<Enrollment> _gallery = [];
   final _nameController = TextEditingController(text: '나');
 
@@ -50,6 +58,19 @@ class _RecognitionPageState extends State<RecognitionPage> {
   String _status = '모델을 불러오는 중...';
   CameraLensDirection _lensDirection = CameraLensDirection.back;
   bool _switchingCamera = false;
+
+  // Liveness — Free-tier blink check. Re-created on face loss via .reset()
+  // rather than allocated fresh, since it carries no per-face identity state.
+  final _liveness = BlinkLivenessDetector();
+  LivenessState _livenessState = LivenessState.pending;
+
+  // Drives the overlay painter — updated every frame regardless of
+  // enroll/identify state so the box is always visible while a face is in
+  // frame (see FaceOverlayPainter in face_overlay.dart).
+  DetectedFace? _overlayFace;
+  FaceLandmarks? _overlayLandmarks;
+  Size _overlayImageSize = Size.zero;
+  String? _matchLabel; // "이름 (유사도 0.xx)" while a live identify match holds
 
   @override
   void initState() {
@@ -85,6 +106,17 @@ class _RecognitionPageState extends State<RecognitionPage> {
         aligner: AffineAligner.arcface112(),
         embedder: embedder,
         matcher: CosineMatcher.fromManifest(embedderManifest),
+      );
+
+      final landmarkerManifest = ModelManifest.fromJsonString(
+        await rootBundle.loadString(
+          'packages/facekit/assets/models/face_landmark_478/manifest.json',
+        ),
+      );
+      _landmarker = await MediaPipeFaceLandmarker.fromAsset(
+        tfliteAssetPath:
+            'packages/facekit/assets/models/face_landmark_478/face_landmark_478.tflite',
+        manifest: landmarkerManifest,
       );
 
       await _initCamera(_lensDirection);
@@ -165,19 +197,64 @@ class _RecognitionPageState extends State<RecognitionPage> {
     );
   }
 
+  /// Runs every camera frame, independent of enroll/identify state, so the
+  /// box overlay + liveness check are always live. The detect→landmark→
+  /// liveness chain is cheap (BlazeFace + a small 256×256 landmark model;
+  /// see doc/KR/benchmark.md) and runs on the calling isolate, matching how
+  /// `FacePipeline.identify/enroll` already run detection synchronously —
+  /// only embedding inference (the expensive step) goes to an isolate.
   Future<void> _onFrame(CameraImage frame) async {
     if (_busy) return; // drop frames while the previous one is still running
     final pipeline = _pipeline;
-    final enrollName = _pendingEnrollName;
-    if (pipeline == null || (!_identifying && enrollName == null)) return;
+    final landmarker = _landmarker;
+    if (pipeline == null || landmarker == null) return;
 
     _busy = true;
     try {
       final image = _toFaceImage(frame);
       if (image == null) return;
 
+      final faces = await pipeline.detector.detect(image);
+      final face = faces.isEmpty
+          ? null
+          : faces.reduce((a, b) => a.score >= b.score ? a : b);
+
+      if (face == null) {
+        _liveness.reset();
+        setState(() {
+          _overlayFace = null;
+          _overlayLandmarks = null;
+          _livenessState = LivenessState.pending;
+          _matchLabel = null;
+        });
+        if (_identifying) _setStatus('얼굴 없음');
+        return;
+      }
+
+      final landmarks = await landmarker.detectLandmarks(image, face);
+      final liveness = landmarks == null
+          ? const LivenessResult(state: LivenessState.pending)
+          : _liveness.update(landmarks, DateTime.now().millisecondsSinceEpoch);
+
+      setState(() {
+        _overlayFace = face;
+        _overlayLandmarks = landmarks;
+        _overlayImageSize = Size(image.width.toDouble(), image.height.toDouble());
+        _livenessState = liveness.state;
+      });
+
+      final enrollName = _pendingEnrollName;
+      if (liveness.state != LivenessState.passed) {
+        if (_matchLabel != null) setState(() => _matchLabel = null);
+        if (enrollName != null || _identifying) {
+          _setStatus('라이브니스 확인 중 — 카메라를 보고 눈을 깜빡여주세요.');
+        }
+        return;
+      }
+
       if (enrollName != null) {
         _pendingEnrollName = null;
+        _liveness.reset();
         final embedding = await pipeline.enroll(image);
         if (embedding == null) {
           _setStatus('얼굴을 찾지 못했어요. 카메라에 얼굴이 잘 보이게 해주세요.');
@@ -188,12 +265,15 @@ class _RecognitionPageState extends State<RecognitionPage> {
       } else if (_identifying) {
         final result = await pipeline.identify(image, _gallery);
         if (result == null) {
+          setState(() => _matchLabel = null);
           _setStatus('얼굴 없음');
         } else if (result.accepted) {
-          _setStatus(
-            '인식됨: ${result.matchedId} (유사도 ${result.similarity.toStringAsFixed(2)})',
-          );
+          final label =
+              '${result.matchedId} (유사도 ${result.similarity.toStringAsFixed(2)})';
+          setState(() => _matchLabel = label);
+          _setStatus('인식됨: $label');
         } else {
+          setState(() => _matchLabel = null);
           _setStatus('모르는 얼굴 (유사도 ${result.similarity.toStringAsFixed(2)})');
         }
       }
@@ -212,6 +292,7 @@ class _RecognitionPageState extends State<RecognitionPage> {
   @override
   void dispose() {
     _controller?.dispose();
+    _landmarker?.dispose();
     _nameController.dispose();
     super.dispose();
   }
@@ -237,7 +318,27 @@ class _RecognitionPageState extends State<RecognitionPage> {
           Expanded(
             child: controller == null || !controller.value.isInitialized
                 ? const Center(child: CircularProgressIndicator())
-                : CameraPreview(controller),
+                : CameraPreview(
+                    controller,
+                    child: CustomPaint(
+                      painter: FaceOverlayPainter(
+                        face: _overlayFace,
+                        landmarks: _overlayLandmarks,
+                        imageSize: _overlayImageSize,
+                        quarterTurns: quarterTurnsForController(controller),
+                        mirror: _lensDirection == CameraLensDirection.front,
+                        boxColor: _livenessState == LivenessState.passed
+                            ? Colors.greenAccent
+                            : Colors.amber,
+                        label: _overlayFace == null
+                            ? null
+                            : _matchLabel ??
+                                (_livenessState == LivenessState.passed
+                                    ? '라이브 확인됨'
+                                    : '눈을 깜빡여주세요'),
+                      ),
+                    ),
+                  ),
           ),
           Padding(
             padding: const EdgeInsets.all(12),

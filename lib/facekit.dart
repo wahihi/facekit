@@ -25,3 +25,7 @@ export 'src/embedding/adapters/embedder_adapter.dart';
 export 'src/embedding/adapters/arcface_adapter.dart';
 export 'src/embedding/adapters/facenet_adapter.dart';
 export 'src/embedding/face_embedder.dart';
+
+export 'src/landmark/face_landmarker.dart';
+
+export 'src/liveness/blink_liveness_detector.dart';
