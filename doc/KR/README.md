@@ -30,6 +30,11 @@
 
 ## 빠른 시작
 
+Flutter/Android 개발 환경이 전혀 없는 상태라면, OS/하드웨어 요구사항부터 SDK 설치,
+BYOM 모델 배치, 빌드, 기기 설치까지 처음부터 따라할 수 있는
+[설치 가이드](installation.md)를 먼저 보세요.
+
+
 ```dart
 import 'package:facekit/facekit.dart';
 

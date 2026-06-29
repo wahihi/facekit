@@ -37,6 +37,11 @@ See [doc/EN/architecture.md](doc/EN/architecture.md) /
 
 ## Quick start
 
+New to Flutter/Android dev entirely? See the step-by-step
+[installation guide](doc/KR/installation.md) (Korean) covering OS/hardware
+requirements, SDK setup, BYOM model placement, building, and installing on a
+device.
+
 ```dart
 import 'package:facekit/facekit.dart';
 
