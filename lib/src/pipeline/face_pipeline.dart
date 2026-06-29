@@ -3,6 +3,7 @@
 // Source: design spec §7 Pipeline + §5 R5.
 
 import 'dart:isolate';
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import '../core/contracts.dart';
 import '../core/models.dart';
 
@@ -31,13 +32,19 @@ class FacePipeline {
     List<Enrollment> gallery,
   ) async {
     final faces = await detector.detect(image);
+    _log('detect: ${faces.length} face(s)');
     if (faces.isEmpty) return null;
 
     // Use the highest-confidence face only (first after descending sort by score).
     final best = faces.reduce((a, b) => a.score >= b.score ? a : b);
+    _log('detect: best score=${best.score.toStringAsFixed(3)}');
     final aligned = aligner.align(image, best);
+    _log('align: ${aligned.size}x${aligned.size} patch ready');
     final embedding = await _embedInIsolate(aligned);
-    return matcher.match(embedding, gallery);
+    _log('embed: ${embedding.dim}-dim vector');
+    final result = matcher.match(embedding, gallery);
+    _log('match: id=${result.matchedId} similarity=${result.similarity.toStringAsFixed(3)} accepted=${result.accepted}');
+    return result;
   }
 
   /// Enrolls the most prominent face in [image] and returns its embedding.
@@ -45,11 +52,23 @@ class FacePipeline {
   /// Returns null if no face is detected.
   Future<Embedding?> enroll(FaceImage image) async {
     final faces = await detector.detect(image);
+    _log('detect: ${faces.length} face(s)');
     if (faces.isEmpty) return null;
 
     final best = faces.reduce((a, b) => a.score >= b.score ? a : b);
+    _log('detect: best score=${best.score.toStringAsFixed(3)}');
     final aligned = aligner.align(image, best);
-    return _embedInIsolate(aligned);
+    _log('align: ${aligned.size}x${aligned.size} patch ready');
+    final embedding = await _embedInIsolate(aligned);
+    _log('embed: ${embedding.dim}-dim vector');
+    return embedding;
+  }
+
+  /// Diagnostic-only logging for following the pipeline step by step via
+  /// `flutter logs`/`adb logcat -s flutter`. Debug-build only — never prints
+  /// in release builds.
+  void _log(String message) {
+    if (kDebugMode) debugPrint('[FacePipeline] $message');
   }
 
   /// Runs [embedder.embed] in a separate isolate.

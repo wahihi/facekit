@@ -78,7 +78,24 @@ class _RecognitionPageState extends State<RecognitionPage> {
   // reference across frames is safe (the camera plugin can't mutate it).
   FaceImage? _lastFaceImage;
   bool _benchmarking = false;
+
+  // Logged-value cache purely for debugPrint de-duplication below — keeps
+  // `flutter logs` readable by printing only on transitions, not every frame.
+  bool? _loggedHasFace;
+  LivenessState? _loggedLivenessState;
   bool _useNnApiForBenchmark = false;
+
+  // How long a face can be briefly undetected before liveness progress is
+  // discarded. Observed on real Pixel 7 hardware: BlazeFace's detection
+  // score can hover right around its 0.5 threshold (logged score 0.5-0.7),
+  // flickering found/lost every ~100-200ms. Without this grace period,
+  // _liveness.reset() fired on every single missed frame and the 4s blink
+  // window restarted from zero each time, making `passed` take far longer
+  // than intended. 500ms is a round starting value sized to cover a few
+  // missed-detection frames, not derived from measured footage — revisit if
+  // it proves too forgiving or still resets too often.
+  static const _faceLossGraceMs = 500;
+  int? _faceLostSinceMs;
 
   // Lazily built only when the NNAPI toggle is first used — a second
   // detector/embedder pair pointed at the same models but with the NNAPI
@@ -239,7 +256,18 @@ class _RecognitionPageState extends State<RecognitionPage> {
           : faces.reduce((a, b) => a.score >= b.score ? a : b);
 
       if (face == null) {
-        _liveness.reset();
+        final now = DateTime.now().millisecondsSinceEpoch;
+        _faceLostSinceMs ??= now;
+        if (now - _faceLostSinceMs! >= _faceLossGraceMs) {
+          // Genuinely gone (not just a 1-2 frame detection flicker) — safe
+          // to discard blink progress now.
+          if (_loggedHasFace != false) {
+            debugPrint('[onFrame] face lost (>${_faceLossGraceMs}ms, resetting liveness)');
+            _loggedHasFace = false;
+            _loggedLivenessState = null;
+          }
+          _liveness.reset();
+        }
         setState(() {
           _overlayFace = null;
           _overlayLandmarks = null;
@@ -249,6 +277,11 @@ class _RecognitionPageState extends State<RecognitionPage> {
         if (_identifying) _setStatus('얼굴 없음');
         return;
       }
+      _faceLostSinceMs = null;
+      if (_loggedHasFace != true) {
+        debugPrint('[onFrame] face found, score=${face.score.toStringAsFixed(3)}');
+        _loggedHasFace = true;
+      }
 
       _lastFaceImage = image;
 
@@ -256,6 +289,11 @@ class _RecognitionPageState extends State<RecognitionPage> {
       final liveness = landmarks == null
           ? const LivenessResult(state: LivenessState.pending)
           : _liveness.update(landmarks, DateTime.now().millisecondsSinceEpoch);
+      if (_loggedLivenessState != liveness.state) {
+        debugPrint('[onFrame] liveness: ${liveness.state}'
+            '${liveness.failReason != null ? " (${liveness.failReason})" : ""}');
+        _loggedLivenessState = liveness.state;
+      }
 
       setState(() {
         _overlayFace = face;
