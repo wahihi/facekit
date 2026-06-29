@@ -1,7 +1,7 @@
 name: facekit
 description: "Flutter on-device face recognition SDK. Clean-room implementation using public models and papers."
 version: 0.1.0
-homepage: https://github.com/facekit-dev/facekit
+homepage: https://github.com/wahihi/facekit
 
 environment:
   sdk: ^3.12.2
