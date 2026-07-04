@@ -81,18 +81,21 @@ benchmark button — lives in [example/](example/).
 
 ## Benchmark
 
-Measured on a real Pixel 7 using the example app's built-in benchmark
-button (n=30, profile build). Full methodology, VM comparison, and accuracy
-(EER) tables are in [doc/KR/benchmark.md](doc/KR/benchmark.md).
+Measured on real devices using the example app's built-in benchmark button
+(n=30, profile build). Full methodology, VM comparison, and accuracy (EER)
+tables are in [doc/KR/benchmark.md](doc/KR/benchmark.md).
 
-| Mode | Detection (BlazeFace) | Embedding (ArcFace buffalo_l) | Full frame |
-|---|---|---|---|
-| CPU (default) | avg 65.1ms | avg 729.4ms | avg 795.6ms |
-| NNAPI | avg 76.6ms | avg 876.2ms | avg 954.4ms |
+| Device | Mode | Detection (BlazeFace) | Embedding (ArcFace buffalo_l) | Full frame |
+|---|---|---|---|---|
+| Pixel 7 | CPU (default) | avg 65.1ms | avg 729.4ms | avg 795.6ms |
+| Pixel 7 | NNAPI | avg 76.6ms | avg 876.2ms | avg 954.4ms |
+| Galaxy S25 (SM-S931N) | CPU (default) | avg 48.0ms | avg 256.6ms | avg 305.0ms |
+| Galaxy S25 (SM-S931N) | NNAPI | avg 44.7ms | avg 244.4ms | avg 289.5ms |
 
-NNAPI measured *slower* than CPU for this model combination (float32
-graphs) — the default stays CPU-only; see the doc above for the root-cause
-analysis.
+The default is CPU-only. On Pixel 7 (Google Tensor G2), NNAPI is slower due
+to float32 fallback overhead. On Galaxy S25 (Snapdragon 8 Elite), NNAPI
+averages ~15ms faster but with much higher p95 variance (386ms vs 314ms) —
+CPU remains the safer default for real-time use.
 
 Accuracy (EER on 200 LFW pairs) is 8.5% for ArcFace and 2.0% for AdaFace,
 with AdaFace staying more robust under low-resolution conditions (full

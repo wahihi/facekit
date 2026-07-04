@@ -81,10 +81,38 @@ XNNPACK 위임을 켜는 건 NNAPI와 별개로 시도해볼 만한 다음 최�
 
 ### 한계 (실기기 섹션)
 
-- Pixel 7 1대만 측정. 갤럭시 A(저가형) 수치는 아직 없음 — 측정되면 이 표에 행을 추가할 것.
+- Pixel 7 1대만 측정. 다른 기기 수치는 아래 Galaxy S25 섹션 참고.
 - n=30, 카메라로 잡은 임의의 한 프레임을 반복 입력으로 고정 — 조명/각도가 다른 여러 프레임에
   대한 분산은 측정하지 않음.
 - 검출 시간에는 Dart 쪽 전처리(리사이즈)·후처리(앵커 디코드+NMS)가 포함돼 있어, 네이티브 추론
   자체보다 이 쪽이 비용을 더 많이 차지할 가능성이 있다(코드 검토 결과 `prepareInputTensor`/
   `zeroTensor`가 boxed `List<List<...>>>`를 매 프레임 새로 할당 — `Float32List` 등 typed
   buffer로 바꾸면 줄어들 여지가 있으나 별도 작업으로 남겨둠).
+
+## 실기기 (Galaxy S25 SM-S931N, 2026-06-30)
+
+Pixel 7과 동일한 방법론: example 앱 벤치마크 버튼, `flutter build apk --profile` 빌드,
+n=30, 워밍업 제외, 카메라로 잡은 한 프레임을 고정해 반복. 임베딩은 `Isolate.run()`을 통해
+매회 새 isolate에서 실행(아이솔레이트 스폰 비용 포함).
+
+| 모드 | 검출(BlazeFace) | 임베딩(ArcFace buffalo_l) | 전체 1프레임 |
+|---|---|---|---|
+| CPU (기본값, 가속 미사용) | 평균 48.0ms / p50 47.8ms / p95 55.6ms | 평균 256.6ms / p50 250.7ms / p95 268.1ms | 평균 305.0ms / p50 301.9ms / p95 314.4ms |
+| NNAPI (`useNnApiForAndroid=true`) | 평균 44.7ms / p50 37.0ms / p95 66.6ms | 평균 244.4ms / p50 205.0ms / p95 325.6ms | 평균 289.5ms / p50 241.4ms / p95 385.8ms |
+
+**Pixel 7 대비:** 임베딩이 729ms → 257ms로 약 2.8배 빠르다. Snapdragon 8 Elite(SM-S931N
+한국·북미 모델에 탑재)의 CPU 연산 처리량 차이가 그대로 반영된 것.
+
+**NNAPI 결과가 Pixel 7과 반대다.** Pixel 7(Google Tensor G2)에서는 NNAPI가 CPU보다 느렸지만,
+S25(Qualcomm Snapdragon 8 Elite)에서는 NNAPI 평균이 CPU보다 15ms 빠르다(305.0ms → 289.5ms).
+Qualcomm AI Engine 드라이버가 float32 그래프도 어느 정도 위임을 수용한다는 것을 시사한다.
+다만 **분산이 크게 벌어졌다** — 전체 프레임 p95가 CPU 314ms 대비 NNAPI 386ms로 오히려 높다.
+p50(241ms)과 p95(386ms)의 차이가 145ms에 달해, 드라이버 스케줄링·thermal throttle 등으로
+레이턴시가 불규칙해지는 것으로 보인다. 실시간 카메라 응용에서는 평균보다 p95 안정성이 중요하므로,
+**기본값 CPU 유지가 여전히 적절하다**는 결론은 S25에서도 동일하게 적용된다.
+
+### 한계 (Galaxy S25 섹션)
+
+- SM-S931N(Snapdragon 8 Elite) 1대만 측정 — Exynos 변종(일부 지역 출시)은 미측정.
+- n=30, 카메라로 잡은 임의의 한 프레임을 반복 입력으로 고정 — 조명/각도 분산 미측정.
+- Pixel 7 섹션과 동일한 전처리 비용 구조 적용(typed buffer 미사용 하한선 수치).
