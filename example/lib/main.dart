@@ -11,7 +11,8 @@
 // holding up a static photo never blinks, so it never reaches the matcher.
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData, rootBundle;
+import 'package:flutter/services.dart'
+    show Clipboard, ClipboardData, rootBundle;
 
 import 'package:facekit/facekit.dart';
 
@@ -57,7 +58,8 @@ class _RecognitionPageState extends State<RecognitionPage> {
   String? _pendingEnrollName; // set by the 등록 button, consumed by next frame
   bool _identifying = false;
   String _status = '모델을 불러오는 중...';
-  CameraLensDirection _lensDirection = CameraLensDirection.back;
+  CameraLensDirection _lensDirection =
+      CameraLensDirection.front; //CameraLensDirection.back; misowish: front로 변경
   bool _switchingCamera = false;
 
   // Liveness — Free-tier blink check. Re-created on face loss via .reset()
@@ -262,7 +264,9 @@ class _RecognitionPageState extends State<RecognitionPage> {
           // Genuinely gone (not just a 1-2 frame detection flicker) — safe
           // to discard blink progress now.
           if (_loggedHasFace != false) {
-            debugPrint('[onFrame] face lost (>${_faceLossGraceMs}ms, resetting liveness)');
+            debugPrint(
+              '[onFrame] face lost (>${_faceLossGraceMs}ms, resetting liveness)',
+            );
             _loggedHasFace = false;
             _loggedLivenessState = null;
           }
@@ -279,7 +283,9 @@ class _RecognitionPageState extends State<RecognitionPage> {
       }
       _faceLostSinceMs = null;
       if (_loggedHasFace != true) {
-        debugPrint('[onFrame] face found, score=${face.score.toStringAsFixed(3)}');
+        debugPrint(
+          '[onFrame] face found, score=${face.score.toStringAsFixed(3)}',
+        );
         _loggedHasFace = true;
       }
 
@@ -290,15 +296,20 @@ class _RecognitionPageState extends State<RecognitionPage> {
           ? const LivenessResult(state: LivenessState.pending)
           : _liveness.update(landmarks, DateTime.now().millisecondsSinceEpoch);
       if (_loggedLivenessState != liveness.state) {
-        debugPrint('[onFrame] liveness: ${liveness.state}'
-            '${liveness.failReason != null ? " (${liveness.failReason})" : ""}');
+        debugPrint(
+          '[onFrame] liveness: ${liveness.state}'
+          '${liveness.failReason != null ? " (${liveness.failReason})" : ""}',
+        );
         _loggedLivenessState = liveness.state;
       }
 
       setState(() {
         _overlayFace = face;
         _overlayLandmarks = landmarks;
-        _overlayImageSize = Size(image.width.toDouble(), image.height.toDouble());
+        _overlayImageSize = Size(
+          image.width.toDouble(),
+          image.height.toDouble(),
+        );
         _livenessState = liveness.state;
       });
 
@@ -478,9 +489,9 @@ class _RecognitionPageState extends State<RecognitionPage> {
                         label: _overlayFace == null
                             ? null
                             : _matchLabel ??
-                                (_livenessState == LivenessState.passed
-                                    ? '라이브 확인됨'
-                                    : '눈을 깜빡여주세요'),
+                                  (_livenessState == LivenessState.passed
+                                      ? '라이브 확인됨'
+                                      : '눈을 깜빡여주세요'),
                       ),
                     ),
                   ),
@@ -511,12 +522,12 @@ class _RecognitionPageState extends State<RecognitionPage> {
                         onPressed: _pipeline == null
                             ? null
                             : () => setState(() {
-                                  _pendingEnrollName =
-                                      _nameController.text.trim().isEmpty
-                                          ? '나'
-                                          : _nameController.text.trim();
-                                  _status = '등록 중... 카메라를 바라봐주세요.';
-                                }),
+                                _pendingEnrollName =
+                                    _nameController.text.trim().isEmpty
+                                    ? '나'
+                                    : _nameController.text.trim();
+                                _status = '등록 중... 카메라를 바라봐주세요.';
+                              }),
                         child: const Text('현재 얼굴 등록'),
                       ),
                     ),
@@ -526,11 +537,11 @@ class _RecognitionPageState extends State<RecognitionPage> {
                         onPressed: _pipeline == null
                             ? null
                             : () => setState(() {
-                                  _identifying = !_identifying;
-                                  _status = _identifying
-                                      ? '실시간 인식 중...'
-                                      : '인식 중지됨';
-                                }),
+                                _identifying = !_identifying;
+                                _status = _identifying
+                                    ? '실시간 인식 중...'
+                                    : '인식 중지됨';
+                              }),
                         child: Text(_identifying ? '인식 중지' : '실시간 인식 시작'),
                       ),
                     ),
