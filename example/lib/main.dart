@@ -245,7 +245,7 @@ class _RecognitionPageState extends State<RecognitionPage> {
 
   FaceImage? _toFaceImage(CameraImage image) {
     if (image.format.group != ImageFormatGroup.yuv420) return null;
-    return yuv420ToFaceImage(
+    final raw = yuv420ToFaceImage(
       yPlane: image.planes[0].bytes,
       uPlane: image.planes[1].bytes,
       vPlane: image.planes[2].bytes,
@@ -255,6 +255,24 @@ class _RecognitionPageState extends State<RecognitionPage> {
       uvRowStride: image.planes[1].bytesPerRow,
       uvPixelStride: image.planes[1].bytesPerPixel ?? 2,
     );
+    return rotateFaceImage(raw, _cameraQuarterTurns());
+  }
+
+  /// Camera sensors are mounted independently of how the phone is held, so
+  /// the raw YUV buffer above is in the sensor's native (usually landscape)
+  /// orientation regardless of device orientation. This app is portrait-only
+  /// (no UI rotation handling), so — assuming the device is held upright —
+  /// the fixed rotation needed is entirely determined by the active camera's
+  /// `sensorOrientation`, adjusted for lens facing (front cameras are
+  /// mounted mirrored relative to back cameras on essentially all Android
+  /// devices). This is the same formula ML Kit's official camera examples
+  /// use for portrait-locked apps.
+  int _cameraQuarterTurns() {
+    final sensorOrientation = _controller?.description.sensorOrientation ?? 0;
+    final degrees = _lensDirection == CameraLensDirection.front
+        ? (360 - sensorOrientation) % 360
+        : sensorOrientation % 360;
+    return degrees ~/ 90;
   }
 
   /// Runs every camera frame, independent of enroll/identify state, so the

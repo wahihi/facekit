@@ -80,6 +80,50 @@ FaceImage bgraToFaceImage({
   return FaceImage(rgbBytes: rgb, width: width, height: height);
 }
 
+/// Rotates [src] clockwise by [quarterTurns] × 90° (values outside 0-3 are
+/// wrapped with `% 4`).
+///
+/// Camera sensors are physically mounted independently of how the phone is
+/// held, so `yuv420ToFaceImage`'s output is in the sensor's native
+/// orientation — typically landscape — regardless of device orientation.
+/// Detection/alignment/embedding all assume an upright face, so the caller
+/// must rotate by the camera's reported `sensorOrientation` (adjusted for
+/// lens facing) before running the recognition pipeline on it.
+FaceImage rotateFaceImage(FaceImage src, int quarterTurns) {
+  final turns = quarterTurns % 4;
+  if (turns == 0) return src;
+
+  final srcW = src.width, srcH = src.height;
+  final dstW = (turns == 2) ? srcW : srcH;
+  final dstH = (turns == 2) ? srcH : srcW;
+  final srcBytes = src.rgbBytes;
+  final dst = Uint8List(dstW * dstH * 3);
+
+  for (int row = 0; row < dstH; row++) {
+    for (int col = 0; col < dstW; col++) {
+      int srcRow, srcCol;
+      switch (turns) {
+        case 1: // 90° clockwise
+          srcRow = srcH - 1 - col;
+          srcCol = row;
+        case 2: // 180°
+          srcRow = srcH - 1 - row;
+          srcCol = srcW - 1 - col;
+        default: // 3 == 270° clockwise (== 90° counter-clockwise)
+          srcRow = col;
+          srcCol = srcW - 1 - row;
+      }
+      final srcIdx = (srcRow * srcW + srcCol) * 3;
+      final dstIdx = (row * dstW + col) * 3;
+      dst[dstIdx] = srcBytes[srcIdx];
+      dst[dstIdx + 1] = srcBytes[srcIdx + 1];
+      dst[dstIdx + 2] = srcBytes[srcIdx + 2];
+    }
+  }
+
+  return FaceImage(rgbBytes: dst, width: dstW, height: dstH);
+}
+
 /// Resizes an RGB888 [FaceImage] to [targetWidth] × [targetHeight]
 /// using nearest-neighbour sampling.
 ///
