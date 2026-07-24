@@ -2,9 +2,12 @@
 //
 // Loads BlazeFace (bundled with the facekit package) for detection,
 // MediaPipe Face Landmarker (also bundled, Apache 2.0) for blink-based
-// liveness, and ArcFace buffalo_l (BYOM/Demo, bundled only in this example
-// app's own assets — see assets/models/arcface_buffalo_l/) for embedding,
-// then drives FacePipeline end-to-end against the device camera feed.
+// liveness, and AuraFace (bundled/redistributable, Apache 2.0 — see
+// assets/models/auraface/) for embedding, then drives FacePipeline end-to-end
+// against the device camera feed. The AuraFace .tflite weight itself is not
+// committed to git (see tool/fetch_models.sh); arcface_buffalo_l is kept
+// alongside it as a BYOM example — swap `_embedderDir`/`_embedderFile` below
+// to switch.
 //
 // Every frame draws a box overlay (see face_overlay.dart) over the detected
 // face, and gates enroll/identify on `BlinkLivenessDetector` passing first —
@@ -18,6 +21,18 @@ import 'package:facekit/facekit.dart';
 
 import 'benchmark.dart';
 import 'face_overlay.dart';
+
+// Demo-mode delays for video recording — flip to false to remove all delays.
+// Dart const bool is tree-shaken: when false the if-blocks below are
+// eliminated from the compiled binary, identical to C's #ifdef _DEMO_MODE.
+const _kDemoMode = true;
+
+// Embedding model in use — swap these two constants to switch models (e.g.
+// back to 'assets/models/arcface_buffalo_l' / 'w600k_r50.tflite', kept in the
+// repo as a BYOM example). See the manifest.json alongside each .tflite for
+// that model's family/license.
+const _embedderDir = 'assets/models/auraface';
+const _embedderFile = 'auraface_r100_fp16.tflite';
 
 late List<CameraDescription> _cameras;
 
@@ -129,12 +144,10 @@ class _RecognitionPageState extends State<RecognitionPage> {
       _detectorManifest = detectorManifest;
 
       final embedderManifest = ModelManifest.fromJsonString(
-        await rootBundle.loadString(
-          'assets/models/arcface_buffalo_l/manifest.json',
-        ),
+        await rootBundle.loadString('$_embedderDir/manifest.json'),
       );
       final embedder = await TfliteFaceEmbedder.fromAsset(
-        tfliteAssetPath: 'assets/models/arcface_buffalo_l/w600k_r50.tflite',
+        tfliteAssetPath: '$_embedderDir/$_embedderFile',
         manifest: embedderManifest,
       );
       _embedderManifest = embedderManifest;
@@ -162,8 +175,17 @@ class _RecognitionPageState extends State<RecognitionPage> {
       setState(() {
         _status = '준비 완료 — 카메라를 가로로 들고 "등록"을 눌러보세요.';
       });
+      if (_kDemoMode) await Future.delayed(const Duration(seconds: 2));
     } catch (e) {
-      setState(() => _status = '초기화 실패: $e');
+      final message = e.toString();
+      // rootBundle throws this when a declared asset isn't actually on disk —
+      // the case for model .tflite files, which are fetched separately via
+      // tool/fetch_models.sh rather than committed to git.
+      final hint = message.contains('Unable to load asset')
+          ? '\n모델 파일이 없습니다. tool/fetch_models.sh 를 실행해 받아주세요.\n'
+              'Model file is missing — run tool/fetch_models.sh to download it.'
+          : '';
+      setState(() => _status = '초기화 실패: $message$hint');
     }
   }
 
@@ -331,6 +353,7 @@ class _RecognitionPageState extends State<RecognitionPage> {
         } else {
           _gallery.add(Enrollment(id: enrollName, embedding: embedding));
           _setStatus('"$enrollName" 등록 완료 (총 ${_gallery.length}명)');
+          if (_kDemoMode) await Future.delayed(const Duration(seconds: 3));
         }
       } else if (_identifying) {
         final result = await pipeline.identify(image, _gallery);
@@ -375,7 +398,7 @@ class _RecognitionPageState extends State<RecognitionPage> {
       useNnApi: true,
     );
     _nnapiEmbedder = await TfliteFaceEmbedder.fromAsset(
-      tfliteAssetPath: 'assets/models/arcface_buffalo_l/w600k_r50.tflite',
+      tfliteAssetPath: '$_embedderDir/$_embedderFile',
       manifest: embedderManifest,
       useNnApi: true,
     );

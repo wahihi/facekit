@@ -23,6 +23,7 @@ EmbedderAdapter adapterForFamily(String family) {
     case 'arcface':
     case 'adaface':
     case 'mobilefacenet':
+    case 'auraface':
       return const ArcfaceAdapter();
     case 'facenet':
       return const FacenetAdapter();

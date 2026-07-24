@@ -24,9 +24,14 @@ migrate_working_dir/
 # is commented out by default.
 #.vscode/
 
-# Embedding model weights (BYOM/Demo — research-licensed, not redistributable).
-# Only manifest.json is tracked; place the matching .tflite locally per CLAUDE.md.
+# Embedding model weights — not committed to the repo (large binaries; some are
+# also research-licensed/non-redistributable). Only manifest.json is tracked.
 # Matches both the package's own assets/ and example/assets/.
+#
+# auraface: bundled/redistributable license, but still >100MB, so it is
+# distributed via a GitHub Release instead of git — see tool/fetch_models.sh.
+# It stays covered by the wildcard below (no ! exception), same as the other
+# embedding models.
 **/assets/models/*/*.tflite
 !assets/models/blazeface_short/*.tflite
 !assets/models/face_landmark_478/*.tflite

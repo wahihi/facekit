@@ -1,0 +1,26 @@
+{
+  "name": "auraface_r100",
+  "family": "auraface",
+  "file": "auraface_r100_fp16.tflite",
+  "input": {
+    "width": 112,
+    "height": 112,
+    "color": "RGB",
+    "layout": "NHWC",
+    "normalize": { "mean": [127.5, 127.5, 127.5], "std": [127.5, 127.5, 127.5] },
+    "note": "TODO: 실기기 검증 후 확정. RGB로 가정했으나 InsightFace 계열(glintr100)이므로 BGR일 가능성도 있어 재확인 필요."
+  },
+  "output": { "dim": 512, "l2_normalize": true },
+  "alignment": { "type": "five_point_affine", "reference": "arcface_112" },
+  "matching": {
+    "metric": "cosine",
+    "threshold": 0.40,
+    "threshold_note": "AuraFace 임시값. 실기기 ROC로 재튜닝 필요."
+  },
+  "license": {
+    "tier": "bundled",
+    "redistributable": true,
+    "source": "fal/AuraFace-v1 (glintr100, ResNet100)",
+    "note": "Apache License 2.0. 상업 사용 및 재배포 가능. 상업·공개 데이터로 학습됨."
+  }
+}

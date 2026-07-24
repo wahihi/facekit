@@ -64,8 +64,11 @@ flutter:
 
   # ArcFace (BYOM/Demo, research-licensed) embedding model — local-only,
   # not part of the published facekit package. See CLAUDE.md license policy.
+  # AuraFace (bundled/redistributable, Apache 2.0) — weight file is fetched
+  # via tool/fetch_models.sh from a GitHub Release, not committed to git.
   assets:
     - assets/models/arcface_buffalo_l/
+    - assets/models/auraface/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
