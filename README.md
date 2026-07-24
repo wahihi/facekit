@@ -150,6 +150,19 @@ For the BYOM embedding models (ArcFace/AdaFace/FaceNet/MobileFaceNet), see
 the [License / Model policy](#license--model-policy-byom) table above and
 each model's `manifest.json`.
 
+## AI-assisted development
+
+This project was developed in collaboration with **Claude Code** (Anthropic)
+— from architecture decisions through implementation, debugging, and
+documentation — under the author's direction and review throughout. For a
+concrete, unfiltered look at what that collaboration actually looks like
+(including the wrong turns), see the debugging write-up in
+[doc/KR/postmortem/](doc/KR/postmortem/).
+
+Commits from 2026-07-24 onward carry a `Co-Authored-By: Claude` trailer.
+Earlier commits predate this disclosure practice but were developed the same
+way.
+
 ## Directory layout
 
 ```

@@ -129,6 +129,18 @@ BYOM 모델은 각 `manifest.json`의 `license.source`에 적힌 원본 저장�
 BYOM 대상 임베딩 모델(ArcFace/AdaFace/FaceNet/MobileFaceNet)의 출처는 위
 [라이선스 / 모델 정책](#라이선스--모델-정책-byom) 표와 각 `manifest.json`을 참고하세요.
 
+## AI 활용 안내
+
+이 프로젝트는 **Claude Code**(Anthropic)와 협업하여 개발되었습니다 — 초기 아키텍처
+결정부터 구현, 디버깅, 문서화까지 전 과정에서 AI의 도움을 받았고, 모든 작업은
+개발자 본인의 지시와 검토 하에 진행되었습니다. 그 협업이 실제로 어떤 모습인지
+(엉뚱한 길로 샜던 부분까지 포함해서) 있는 그대로 보여주는 디버깅 기록을
+[doc/KR/postmortem/](postmortem/)에 남겨두었습니다.
+
+2026-07-24 이후 커밋에는 `Co-Authored-By: Claude` 트레일러가 붙습니다. 그
+이전 커밋들은 이 공개 방침이 생기기 전에 만들어졌지만, 개발 방식 자체는
+동일했습니다.
+
 ## 디렉터리 구조
 
 ```
