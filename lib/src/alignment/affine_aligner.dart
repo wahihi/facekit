@@ -10,6 +10,8 @@
 
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show debugPrint;
+import '../core/debug_flags.dart';
 import '../core/models.dart';
 import '../core/contracts.dart';
 
@@ -33,6 +35,12 @@ const facenet160Ref = [
   Point(60.0, 133.0),
   Point(100.0, 133.0),
 ];
+
+// DEBUG (see core/debug_flags.dart) — counts align() calls so the printed
+// matrix below can be matched, in log order, against face_pipeline.dart's
+// LANDMARKS log (printed just before align() is called) and its crop dump
+// (printed just after).
+int _debugAlignCallCount = 0;
 
 /// Implements [FaceAligner] using a 5-point similarity transform.
 class AffineAligner implements FaceAligner {
@@ -59,6 +67,15 @@ class AffineAligner implements FaceAligner {
     final dst = referencePoints;
 
     final m = _umeyamaSimilarity(src, dst);
+    if (kFacekitVerboseDebug) {
+      _debugAlignCallCount++;
+      debugPrint(
+        '[AffineAligner] DEBUG MATRIX #$_debugAlignCallCount '
+        'a=${m[0].toStringAsFixed(4)} b=${m[1].toStringAsFixed(4)} tx=${m[2].toStringAsFixed(1)} '
+        'c=${m[3].toStringAsFixed(4)} d=${m[4].toStringAsFixed(4)} ty=${m[5].toStringAsFixed(1)} '
+        'src=$src',
+      );
+    }
     final rgb = _warpBilinear(image, m, outputSize);
 
     return AlignedFace(rgbBytes: rgb, size: outputSize);

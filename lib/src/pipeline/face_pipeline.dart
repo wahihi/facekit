@@ -2,10 +2,73 @@
 // Heavy inference runs in a Dart isolate to avoid dropping UI frames.
 // Source: design spec §7 Pipeline + §5 R5.
 
+import 'dart:convert' show base64Encode;
 import 'dart:isolate';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import '../core/contracts.dart';
+import '../core/debug_flags.dart';
 import '../core/models.dart';
+
+// DEBUG (see core/debug_flags.dart) — prints the aligned-face RGB crop as
+// base64, chunked across many short debugPrint lines, so it can be
+// reconstructed from a plain `flutter run` console copy-paste. Three other
+// approaches were tried and failed on a real device: a clipboard round-trip
+// silently truncated a 37KB string, writing to app-external storage was
+// blocked (scoped storage requires the Android Context API, not plain
+// dart:io), and a loopback HttpServer.bind failed with EPERM (device policy
+// blocked server sockets). Only dumps once per label per app run
+// (identify() fires every frame once liveness passes, and re-dumping every
+// frame would flood the log).
+const _debugChunkSize = 500;
+bool _debugEnrollDumped = false;
+bool _debugIdentifyDumped = false;
+
+void _debugDumpAlignedFace(String label, AlignedFace face) {
+  if (!kFacekitVerboseDebug) return;
+  final alreadyDumped = label == 'enroll' ? _debugEnrollDumped : _debugIdentifyDumped;
+  if (alreadyDumped) return;
+  if (label == 'enroll') {
+    _debugEnrollDumped = true;
+  } else {
+    _debugIdentifyDumped = true;
+  }
+
+  final b64 = base64Encode(face.rgbBytes);
+  final chunks = <String>[];
+  for (var i = 0; i < b64.length; i += _debugChunkSize) {
+    final end = (i + _debugChunkSize < b64.length) ? i + _debugChunkSize : b64.length;
+    chunks.add(b64.substring(i, end));
+  }
+  debugPrint(
+    '[FacePipeline] TEMP DEBUG BEGIN $label '
+    '(${face.size}x${face.size}, ${face.rgbBytes.length} bytes, ${chunks.length} chunks)',
+  );
+  for (var i = 0; i < chunks.length; i++) {
+    debugPrint('[FacePipeline] TEMP DEBUG CHUNK $label ${i + 1}/${chunks.length} ${chunks[i]}');
+  }
+  debugPrint('[FacePipeline] TEMP DEBUG END $label');
+}
+
+// DEBUG (see core/debug_flags.dart) — logs the raw detector landmarks
+// (pre-alignment) every time, to check whether their order/positions (e.g.
+// left/right eye) stay consistent between calls — useful for diagnosing
+// camera-orientation/alignment issues.
+void _debugLogLandmarks(String label, FaceImage image, DetectedFace face) {
+  if (!kFacekitVerboseDebug) return;
+  final box = face.boundingBox;
+  final pts = face.landmarks
+      .asMap()
+      .entries
+      .map((e) => '${e.key}:(${e.value.x.toStringAsFixed(1)},${e.value.y.toStringAsFixed(1)})')
+      .join(' ');
+  debugPrint(
+    '[FacePipeline] TEMP DEBUG LANDMARKS $label '
+    'imageSize=${image.width}x${image.height} '
+    'bbox=(${box.left.toStringAsFixed(1)},${box.top.toStringAsFixed(1)})'
+    '-(${box.right.toStringAsFixed(1)},${box.bottom.toStringAsFixed(1)}) '
+    'score=${face.score.toStringAsFixed(3)} pts=$pts',
+  );
+}
 
 /// Full pipeline: detect → align → embed → match.
 ///
@@ -38,8 +101,10 @@ class FacePipeline {
     // Use the highest-confidence face only (first after descending sort by score).
     final best = faces.reduce((a, b) => a.score >= b.score ? a : b);
     _log('detect: best score=${best.score.toStringAsFixed(3)}');
+    _debugLogLandmarks('identify', image, best);
     final aligned = aligner.align(image, best);
     _log('align: ${aligned.size}x${aligned.size} patch ready');
+    _debugDumpAlignedFace('identify', aligned);
     final embedding = await _embedInIsolate(aligned);
     _log('embed: ${embedding.dim}-dim vector');
     final result = matcher.match(embedding, gallery);
@@ -57,8 +122,10 @@ class FacePipeline {
 
     final best = faces.reduce((a, b) => a.score >= b.score ? a : b);
     _log('detect: best score=${best.score.toStringAsFixed(3)}');
+    _debugLogLandmarks('enroll', image, best);
     final aligned = aligner.align(image, best);
     _log('align: ${aligned.size}x${aligned.size} patch ready');
+    _debugDumpAlignedFace('enroll', aligned);
     final embedding = await _embedInIsolate(aligned);
     _log('embed: ${embedding.dim}-dim vector');
     return embedding;

@@ -2,9 +2,13 @@
 // matching `manifest.family`, and implements the FaceEmbedder contract.
 // Source: design spec §4, §7, §8.
 
-import 'package:flutter/foundation.dart' show kReleaseMode;
+import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart' show kReleaseMode, debugPrint;
 
 import '../core/contracts.dart';
+import '../core/debug_flags.dart';
+import '../core/math.dart';
 import '../core/models.dart';
 import '../inference/model_manifest.dart';
 import '../inference/tflite_runner.dart';
@@ -54,6 +58,12 @@ class TfliteFaceEmbedder implements FaceEmbedder {
     manifest.validate();
     manifest.assertLoadable(isReleaseBuild: kReleaseMode);
     final runner = await TfliteRunner.fromAsset(tfliteAssetPath, useNnApi: useNnApi);
+    if (kFacekitVerboseDebug) {
+      debugPrint(
+        '[TfliteFaceEmbedder] ${manifest.name} inputShape=${runner.inputShape} '
+        'outputShape0=${runner.outputShape(0)}',
+      );
+    }
     return TfliteFaceEmbedder._(
       runner: runner,
       manifest: manifest,
@@ -93,6 +103,20 @@ class TfliteFaceEmbedder implements FaceEmbedder {
     }
     _runner.runForMultipleOutputs(input, outputs);
     final embedding = (outputs[0] as List)[0] as List<double>;
+
+    if (kFacekitVerboseDebug) {
+      final raw = Float32List.fromList(embedding);
+      var rawMin = raw.first, rawMax = raw.first;
+      for (final v in raw) {
+        if (v < rawMin) rawMin = v;
+        if (v > rawMax) rawMax = v;
+      }
+      debugPrint(
+        '[TfliteFaceEmbedder] ${_manifest.name} raw embedding: '
+        'min=$rawMin max=$rawMax l2Norm=${l2Norm(raw)}',
+      );
+    }
+
     return _adapter.postprocess(embedding, _manifest);
   }
 
