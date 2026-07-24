@@ -1,3 +1,7 @@
+🇺🇸 [English version](../EN/benchmark.md)
+
+---
+
 # 벤치마크 (2026-06-26)
 
 facekit 파이프라인의 추론 속도·모델 크기·정확도를 측정한 기록.

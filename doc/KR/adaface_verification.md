@@ -1,3 +1,7 @@
+🇺🇸 [English version](../EN/adaface_verification.md)
+
+---
+
 # AdaFace 실모델 검증 (2026-06-25)
 
 ArcFace(`arcface_buffalo_l`/w600k_r50)와 AdaFace(`adaface_ir101_webface12m`)

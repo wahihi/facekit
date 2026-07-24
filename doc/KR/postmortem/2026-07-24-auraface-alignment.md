@@ -1,3 +1,7 @@
+🇺🇸 [English version](../../EN/postmortem/2026-07-24-auraface-alignment.md)
+
+---
+
 # AuraFace 유사도가 낮게 나온 하루 — 버그 두 개가 겹쳐 있었던 이야기
 
 **날짜:** 2026-07-24

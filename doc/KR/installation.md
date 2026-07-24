@@ -1,3 +1,7 @@
+🇺🇸 [English version](../EN/installation.md)
+
+---
+
 # 설치 가이드 (처음부터 따라하기)
 
 facekit을 처음 받아서 example 앱을 실기기에서 실행해보기까지, 필요한 모든 단계를

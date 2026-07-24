@@ -157,7 +157,8 @@ This project was developed in collaboration with **Claude Code** (Anthropic)
 documentation — under the author's direction and review throughout. For a
 concrete, unfiltered look at what that collaboration actually looks like
 (including the wrong turns), see the debugging write-up in
-[doc/KR/postmortem/](doc/KR/postmortem/).
+[doc/EN/postmortem/](doc/EN/postmortem/) (also available
+[in Korean](doc/KR/postmortem/)).
 
 Commits from 2026-07-24 onward carry a `Co-Authored-By: Claude` trailer.
 Earlier commits predate this disclosure practice but were developed the same
