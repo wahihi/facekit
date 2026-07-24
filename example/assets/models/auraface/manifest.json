@@ -7,8 +7,8 @@
     "height": 112,
     "color": "RGB",
     "layout": "NHWC",
-    "normalize": { "mean": [127.5, 127.5, 127.5], "std": [127.5, 127.5, 127.5] },
-    "note": "TODO: 실기기 검증 후 확정. RGB로 가정했으나 InsightFace 계열(glintr100)이므로 BGR일 가능성도 있어 재확인 필요."
+    "normalize": { "mean": [0.0, 0.0, 0.0], "std": [1.0, 1.0, 1.0] },
+    "note": "실기기 캡처로 검증 완료 — RGB, 정규화 없이 원본 0~255 픽셀을 그대로 입력해야 함(표준 ArcFace의 (pixel-127.5)/127.5 컨벤션이 아님). auraface_sim_float16.tflite에 실제 정렬 크롭 2장(같은 사람)을 넣어 자기-유사도를 비교: mean=127.5 정규화 시 0.15~0.20, 정규화 없이(raw) RGB 시 0.9325, BGR 시 0.9280 — RGB+raw가 최고값. 방법론: auraface_conv/ 아래 검증 스크립트 참고."
   },
   "output": { "dim": 512, "l2_normalize": true },
   "alignment": { "type": "five_point_affine", "reference": "arcface_112" },
