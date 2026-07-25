@@ -9,7 +9,8 @@
 않았습니다.
 
 - 코드: **Apache License 2.0** ([LICENSE](../../LICENSE))
-- 임베딩 모델: **BYOM(Bring Your Own Model)** — 아래 [라이선스 / 모델 정책](#라이선스--모델-정책-byom) 참고
+- 임베딩: 상업 사용 가능한 **AuraFace(Apache 2.0)를 기본으로 동봉**하며, 매니페스트
+  교체로 다른 모델도 연결 가능(BYOM 구조 유지) — 아래 [라이선스 / 모델 정책](#라이선스--모델-정책-byom) 참고
 
 ---
 
@@ -19,8 +20,8 @@
 전 단계를 단말기 안에서(네트워크 호출 없이) 처리합니다.
 
 - **검출**: BlazeFace (MediaPipe, Apache 2.0) — SDK에 동봉, 별도 다운로드 불필요
-- **임베딩**: 모델 교체 가능 구조 — ArcFace / AdaFace / MobileFaceNet / FaceNet 어댑터
-  내장. 실제 가중치는 BYOM(직접 준비)
+- **임베딩**: 모델 교체 가능 구조 — 기본값으로 **AuraFace**(Apache 2.0) 동봉, 그 외
+  ArcFace / AdaFace / MobileFaceNet / FaceNet 어댑터도 내장(가중치는 BYOM, 직접 준비)
 - **매칭**: 코사인 유사도 기반, manifest의 임계값으로 정/오답 판정
 - **라이브니스(Free)**: 눈 깜빡임(Blink, EAR) 검출 — 정지된 사진을 들이대면 통과하지 못함
 - **온디바이스 전용**: 임베딩 등 무거운 추론은 별도 isolate에서 실행해 UI를 막지 않음
@@ -99,23 +100,29 @@ AdaFace가 더 강건합니다(자세한 수치는 [doc/KR/adaface_verification.
 
 직접 작성한 코드 전체는 **Apache License 2.0**입니다 ([LICENSE](../../LICENSE)).
 
-이 SDK는 임베딩 모델 가중치를 **동봉하지 않습니다.** `assets/models/*/manifest.json`마다
-`license.tier`/`license.redistributable` 필드로 라이선스를 명시하고, `.gitignore`로
-재배포 불가 가중치 파일을 저장소에서 제외합니다:
+이 SDK는 **상업 사용 가능한 AuraFace(Apache 2.0)를 기본 임베딩 모델로 제공합니다** —
+가중치 자체는 (라이선스가 아니라 용량 문제로) `tool/fetch_models.sh`가 빌드/개발
+시점에 받아오고 커밋되진 않습니다. 그 아래의 매니페스트 기반 어댑터 구조는 여전히
+BYOM을 지원해서, `manifest.json` + `.tflite`만 놓으면 다른 임베딩 모델로도 교체할
+수 있습니다. `assets/models/*/manifest.json`마다 `license.tier`/`license.redistributable`
+필드로 라이선스를 명시하고, `.gitignore`로 재배포 불가 가중치 파일을 저장소에서
+제외합니다:
 
 | 모델 | 역할 | 라이선스 | 동봉 여부 |
 |---|---|---|---|
 | BlazeFace short-range | 검출 | Apache 2.0 (MediaPipe) | ✅ 동봉 |
 | MediaPipe Face Landmarker (478점) | 라이브니스용 랜드마크 | Apache 2.0 (MediaPipe) | ✅ 동봉 |
-| ArcFace (buffalo_l / w600k_r50) | 임베딩 | 비상업 연구용 (InsightFace) | ❌ BYOM |
+| AuraFace (glintr100 / ResNet100) | 임베딩 (기본값) | Apache 2.0 (fal.ai) | ✅ 동봉 (`tool/fetch_models.sh`로 받음) |
+| ArcFace (buffalo_l / w600k_r50) | 임베딩 (BYOM 예시) | 비상업 연구용 (InsightFace) | ❌ BYOM |
 | AdaFace (IR-101 / WebFace12M) | 임베딩 | 비상업 연구용 (mk-minchul/AdaFace) | ❌ BYOM |
 | FaceNet512 | 임베딩 | 비상업 연구용 | ❌ BYOM |
 | MobileFaceNet | 임베딩 | 배포본에 따라 다름(확인 필요) | ❌ BYOM |
 
 BYOM 모델은 각 `manifest.json`의 `license.source`에 적힌 원본 저장소에서 직접 받아
-해당 폴더에 배치해야 합니다. `ModelManifest.assertLoadable()`이 `redistributable:false`
-모델은 **release 빌드에서 로드 자체를 막아** 라이선스 위반 가능성을 코드 레벨에서
-차단합니다([lib/src/inference/model_manifest.dart](../../lib/src/inference/model_manifest.dart)).
+해당 폴더에 배치해야 합니다 — 전체 절차는 설치 가이드의
+[부록 A](installation.md#부록-a--다른-임베딩-모델-쓰기-byom) 참고. `ModelManifest.assertLoadable()`이
+`redistributable:false` 모델은 **release 빌드에서 로드 자체를 막아** 라이선스 위반
+가능성을 코드 레벨에서 차단합니다([lib/src/inference/model_manifest.dart](../../lib/src/inference/model_manifest.dart)).
 
 ## 사용한 오픈소스
 

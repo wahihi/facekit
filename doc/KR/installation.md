@@ -86,136 +86,66 @@ Android Studio를 설치하면 SDK가 같이 깔리지만, SDK만 따로 깔아�
    `[✓] Android toolchain`, `[✓] Connected device` 등이 보이면 됩니다. `Linux toolchain`
    항목(데스크톱 빌드용 clang/ninja/gtk3)은 **Android만 쓸 거면 무시해도 됩니다.**
 
-## 3. 저장소 클론
+## 3. 기기 준비 — USB 디버깅
 
-```bash
-git clone https://github.com/wahihi/facekit.git
-cd facekit
-```
+`flutter run`으로 실기기에 바로 설치하려면 미리 연결해둬야 합니다.
 
-## 4. 의존성 설치
-
-facekit은 패키지(루트)와 example 앱, 두 개의 독립된 Flutter 프로젝트가 한 저장소에
-있습니다 — **둘 다** 의존성을 받아야 합니다.
-
-```bash
-flutter pub get            # 루트(facekit 패키지 본체)
-cd example
-flutter pub get            # example 앱
-cd ..
-```
-
-## 5. 임베딩 모델 준비 (BYOM) — 건너뛰면 앱이 못 뜹니다
-
-facekit은 검출 모델(BlazeFace)과 라이브니스용 랜드마크 모델만 동봉하고, **임베딩 모델은
-저장소에 들어있지 않습니다** (라이선스 정책 — [README.md](../../README.md#license--model-policy-byom)
-참고). example 앱은 기본적으로 ArcFace(`buffalo_l`)를 쓰도록 되어 있는데, 이 가중치를
-직접 받아서 넣어줘야 합니다.
-
-```bash
-ls example/assets/models/arcface_buffalo_l/
-# manifest.json만 보이고 .tflite는 없는 게 정상 (.gitignore로 제외됨)
-```
-
-1. https://github.com/deepinsight/insightface 에서 `buffalo_l` 모델 팩의
-   `w600k_r50.onnx`(또는 동등한 ArcFace R100 가중치)를 받습니다.
-   - 비상업 연구용 라이선스입니다 — 상업적으로 쓰면 안 됩니다 (자세한 내용은
-     `example/assets/models/arcface_buffalo_l/manifest.json`의 `license` 필드).
-2. ONNX를 TFLite로 변환합니다 (`onnx2tf`, `onnx-tf` 등 — 변환 방법은 모델/툴 버전에
-   따라 다르므로 이 문서에서는 다루지 않습니다).
-3. 변환된 파일을 정확히 이 경로/이름으로 둡니다:
-   ```
-   example/assets/models/arcface_buffalo_l/w600k_r50.tflite
-   ```
-4. 이 파일이 없는 채로 앱을 실행하면 `_setup()`에서 모델 로드가 실패해 화면에
-   "초기화 실패: ..." 메시지가 뜹니다 — 정상적인 동작이니 당황하지 마세요.
-
-> AdaFace 등 다른 임베딩 모델로 바꾸고 싶다면 `lib/src/embedding/adapters/` 와
-> [doc/EN/architecture.md](architecture.md)를 참고하세요. 모델 자체를 안 쓰고 코드
-> 구조만 보고 싶다면 이 단계는 생략하고 6번으로 가도 되지만, 그 경우 example 앱은
-> 카메라 프리뷰까지는 뜨고 등록/인식 단계에서 동작하지 않습니다.
-
-## 6. 빌드
-
-`example/` 디렉터리에서 실행합니다.
-
-```bash
-cd example
-```
-
-### 6-1. 개발 중 — 기기에 바로 실행 (가장 많이 쓰는 명령)
-
-```bash
-flutter run
-```
-
-여러 기기가 연결돼 있으면 `flutter devices`로 확인 후 `-d <기기ID>`로 지정합니다.
-이 명령은 디버그 모드로 빌드해 바로 실행하고, hot reload(`r` 키)도 됩니다.
-
-### 6-2. APK만 빌드 (설치 파일만 필요할 때)
-
-```bash
-flutter build apk --debug      # 디버그용 — 가장 빠르게 빌드, 최적화 없음
-flutter build apk --profile    # 성능 측정용 — AOT 최적화 적용, 디버그 도구는 일부 제한
-flutter build apk --release    # 배포용 — 최대 최적화
-```
-
-빌드 결과물 위치는 모드 공통으로:
-```
-example/build/app/outputs/flutter-apk/app-{debug,profile,release}.apk
-```
-
-> ⚠️ **`--release`는 이 예제에서 실행 시점에 실패합니다.** ArcFace 데모 모델의
-> manifest가 `redistributable: false`라서, `ModelManifest.assertLoadable()`이
-> **release 빌드에서는 코드 레벨로 모델 로드를 차단**합니다(라이선스 보호 목적,
-> [lib/src/inference/model_manifest.dart](../../lib/src/inference/model_manifest.dart)).
-> 성능을 보려면 `--profile`을 쓰세요 — AOT 최적화는 release와 동일하면서 이 가드에
-> 걸리지 않습니다. 자세한 이유는 [benchmark.md](benchmark.md)에 정리되어 있습니다.
-
-## 7. 기기에 설치하기
-
-### 7-1. 휴대폰에서 개발자 옵션 / USB 디버깅 켜기
-
-1. **설정 → 휴대전화 정보(기기 정보)** → **빌드 번호**를 7번 연속 탭
+1. 폰에서 **설정 → 휴대전화 정보(기기 정보)** → **빌드 번호**를 7번 연속 탭
 2. **설정 → 시스템 → 개발자 옵션** → **USB 디버깅** 켜기
 3. PC와 USB로 연결 → 폰에 뜨는 **"USB 디버깅을 허용하시겠습니까?"** → **이 컴퓨터에서
    항상 허용** 체크 후 허용
+4. PC에서 인식 확인:
+   ```bash
+   adb devices -l
+   ```
+   기기 시리얼이 `device` 상태로 보이면 정상입니다.
 
-### 7-2. PC에서 인식 확인
+   - **`no permissions (missing udev rules?)`로 나오는 경우 (Linux 전용 문제)** —
+     Google 기기(vendor ID `18d1`)에 대한 udev 권한 규칙이 없는 경우입니다:
+     ```bash
+     echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", MODE="0666", GROUP="plugdev"' \
+       | sudo tee /etc/udev/rules.d/51-android.rules
+     sudo udevadm control --reload-rules
+     sudo udevadm trigger
+     ```
+     이후 USB 케이블을 뽑고 다시 꽂은 뒤 폰의 허용 팝업을 다시 확인하세요. (본인 계정이
+     `plugdev` 그룹에 속해 있어야 합니다 — `groups` 명령으로 확인.)
+   - **`unauthorized`로 나오는 경우** — 폰 화면의 USB 디버깅 허용 팝업을 아직 못 누른
+     상태입니다. 케이블을 재연결하고 팝업을 확인하세요.
+
+## 4. 빠른 시작 (기본 경로)
+
+여기까지(0~3번) 환경만 갖춰져 있으면, **아래 네 단계만으로 등록·인식까지 바로
+동작합니다** — 임베딩 모델을 직접 구하거나 변환할 필요가 없습니다. 기본 임베딩
+모델인 **AuraFace**(Apache 2.0, 상업적 재배포 가능)를 GitHub Release에서 자동으로
+받아오기 때문입니다.
 
 ```bash
-adb devices -l
+# 1. 클론
+git clone https://github.com/wahihi/facekit.git
+cd facekit
+
+# 2. 의존성 설치 (example 앱 기준)
+cd example
+flutter pub get
+
+# 3. 임베딩 모델 다운로드 (AuraFace, ~130MB, 최초 1회만)
+bash ../tool/fetch_models.sh
+
+# 4. 실행
+flutter run
 ```
 
-기기 시리얼이 `device` 상태로 보이면 정상입니다.
+`tool/fetch_models.sh`는 GitHub Release에서 `.tflite` 가중치를 받아 SHA256으로
+무결성을 검증한 뒤 `example/assets/models/auraface/`에 둡니다. 이미 파일이 있으면
+아무것도 하지 않고 즉시 종료하므로, 몇 번을 다시 실행해도 안전합니다.
 
-- **`no permissions (missing udev rules?)`로 나오는 경우 (Linux 전용 문제)** —
-  Google 기기(vendor ID `18d1`)에 대한 udev 권한 규칙이 없는 경우입니다:
-  ```bash
-  echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", MODE="0666", GROUP="plugdev"' \
-    | sudo tee /etc/udev/rules.d/51-android.rules
-  sudo udevadm control --reload-rules
-  sudo udevadm trigger
-  ```
-  이후 USB 케이블을 뽑고 다시 꽂은 뒤 폰의 허용 팝업을 다시 확인하세요. (본인 계정이
-  `plugdev` 그룹에 속해 있어야 합니다 — `groups` 명령으로 확인.)
+`flutter run`이 뜨면 카메라 화면이 나오고, **"등록" 버튼을 눌러 이름을 등록한 뒤
+"실시간 인식 시작"을 누르면 바로 재인식이 동작합니다.** 다른 임베딩 모델(ArcFace 등)을
+쓰고 싶은 경우나 매니페스트 구조를 더 알고 싶은 경우는 [부록 A](#부록-a--다른-임베딩-모델-쓰기-byom)를,
+동봉된 모델들의 라이선스는 [부록 B](#부록-b--라이선스)를 참고하세요.
 
-### 7-3. APK 설치
-
-USB로 연결된 상태라면:
-```bash
-adb install -r build/app/outputs/flutter-apk/app-profile.apk
-```
-
-USB 없이 같은 Wi-Fi로 설치하고 싶다면, PC에서 임시 다운로드 서버를 띄우고 폰
-브라우저로 받는 방법도 있습니다:
-```bash
-cd build/app/outputs/flutter-apk
-python3 -m http.server 8765 --bind 0.0.0.0
-# 폰 브라우저에서 http://<PC의 LAN IP>:8765/app-profile.apk 접속 후 다운로드
-```
-
-## 8. 로그 보기 (동작 과정 확인)
+## 5. 로그 보기 (동작 과정 확인)
 
 ```bash
 flutter logs
@@ -233,22 +163,62 @@ adb logcat -s flutter:*
 [FacePipeline] match: id=나 similarity=0.873 accepted=true
 ```
 
-## 9. 테스트 실행
+더 자세한 파이프라인 내부 로그(정렬 행렬, raw 임베딩 통계 등)가 필요하면
+`flutter run --dart-define=FACEKIT_VERBOSE_DEBUG=true`로 켤 수 있습니다 — 평소엔
+꺼져 있어 빌드에 전혀 안 들어갑니다.
+
+## 6. 테스트 실행
 
 ```bash
-flutter test               # 루트(facekit 패키지) 단위 테스트
+flutter test               # 루트(facekit 패키지) 단위 테스트 — 별도로 루트에서 flutter pub get 필요
 cd example && flutter test # example 앱 위젯 테스트
 ```
 
-## 10. 자주 만나는 문제
+## 7. 빌드 모드 참고 (release/profile을 쓰고 싶다면)
+
+`flutter run`은 기본적으로 디버그 모드입니다. 성능을 보거나 배포용 APK가
+필요하면:
+
+```bash
+flutter build apk --debug      # 디버그용 — 가장 빠르게 빌드, 최적화 없음
+flutter build apk --profile    # 성능 측정용 — AOT 최적화 적용, 디버그 도구는 일부 제한
+flutter build apk --release    # 배포용 — 최대 최적화
+```
+
+빌드 결과물 위치는 모드 공통으로:
+```
+example/build/app/outputs/flutter-apk/app-{debug,profile,release}.apk
+```
+
+**기본 임베딩 모델(AuraFace)은 `bundled`/`redistributable: true`라 `--release`
+빌드에서도 정상적으로 로드됩니다.** 다만 [부록 A](#부록-a--다른-임베딩-모델-쓰기-byom)를 따라
+`arcface_buffalo_l` 같은 연구용(research-tier) 모델로 바꾸면, `ModelManifest.assertLoadable()`이
+**release 빌드에서는 코드 레벨로 모델 로드를 차단**합니다(라이선스 보호 목적 —
+자세한 동작은 [부록 B](#부록-b--라이선스) 참고). 그 경우 성능을 보려면 `--profile`을
+쓰세요 — AOT 최적화는 release와 동일하면서 이 가드에 걸리지 않습니다. 자세한 이유는
+[benchmark.md](benchmark.md)에 정리되어 있습니다.
+
+APK를 직접 설치하려면:
+```bash
+adb install -r build/app/outputs/flutter-apk/app-profile.apk
+```
+USB 없이 같은 Wi-Fi로 설치하고 싶다면, PC에서 임시 다운로드 서버를 띄우고 폰
+브라우저로 받는 방법도 있습니다:
+```bash
+cd build/app/outputs/flutter-apk
+python3 -m http.server 8765 --bind 0.0.0.0
+# 폰 브라우저에서 http://<PC의 LAN IP>:8765/app-profile.apk 접속 후 다운로드
+```
+
+## 8. 자주 만나는 문제
 
 | 증상 | 원인 / 해결 |
 |---|---|
 | `Target file "lib/main.dart" not found` | 저장소 루트에서 `flutter run`을 실행했음 — `cd example` 후 실행 |
 | 웹(`flutter run -d chrome`)에서 `dart:ffi` 에러 | `tflite_flutter`가 `dart:ffi`를 쓰는데 웹은 이를 지원하지 않음 — 이 SDK는 웹 미지원, Android(또는 iOS/데스크톱)로 실행 |
-| `--release` 빌드에서 모델 로드 실패 | 위 6-2 참고 — BYOM 데모 모델의 라이선스 가드. `--profile`이나 `--debug` 사용 |
-| 초기화 실패: ... (앱 첫 화면) | 5번(BYOM 모델 준비)을 안 했을 가능성이 높음 — `.tflite` 파일 위치 확인 |
-| `adb devices`에 `no permissions` | 7-2의 udev 규칙 추가 |
+| 초기화 실패: ... "모델 파일이 없습니다" (앱 첫 화면) | `tool/fetch_models.sh`를 안 돌렸을 가능성이 높음 — 4번(빠른 시작) 참고 |
+| BYOM 모델로 바꾼 뒤 `--release` 빌드에서 모델 로드 실패 | 위 7번 참고 — research-tier 모델의 라이선스 가드. `--profile`이나 `--debug` 사용 |
+| `adb devices`에 `no permissions` | 3번의 udev 규칙 추가 |
 | `adb devices`에 `unauthorized` | 폰 화면의 USB 디버깅 허용 팝업을 못 누른 상태 — 케이블 재연결 후 팝업 확인 |
 | 앱 첫 실행 시 `CameraException(Disposed CameraController...)` 로그 한 줄 | `adb install -r`로 실행 중인 앱 위에 덮어 설치할 때 나는 일회성 잡음으로 보임(이전 프로세스 정리 타이밍) — 이후 정상 동작하면 무시 가능, 완전 종료 후 재실행해도 반복되면 별도 확인 필요 |
 | Gradle 빌드 중 "Kotlin Gradle Plugin (KGP)" 경고 | `camera_android_camerax` 플러그인 관련 경고, 현재 빌드를 막지 않으므로 무시 가능 |
@@ -256,5 +226,161 @@ cd example && flutter test # example 앱 위젯 테스트
 
 ---
 
-더 깊은 내용(아키텍처, 모델 교체 방법, 벤치마크 방법론)은 [architecture.md](architecture.md),
+## 부록 A — 다른 임베딩 모델 쓰기 (BYOM)
+
+기본값(AuraFace)이 아닌 다른 임베딩 모델(ArcFace, AdaFace 등)을 직접 구해서 쓰고
+싶은 경우입니다. facekit은 임베딩 모델을 매니페스트 기반으로 갈아끼우는 BYOM
+구조라, **모델 자체를 리포에 동봉하지 않고** manifest.json + `.tflite`만 정해진
+경로에 놓으면 됩니다.
+
+### A.1 예시 — ArcFace(buffalo_l) 준비하기
+
+이미 리포에 `example/assets/models/arcface_buffalo_l/manifest.json`이 있고
+BYOM 예시로 유지되고 있습니다. `.tflite` 가중치만 직접 채우면 됩니다.
+
+```bash
+ls example/assets/models/arcface_buffalo_l/
+# manifest.json만 보이고 .tflite는 없는 게 정상 (.gitignore로 제외됨)
+```
+
+1. https://github.com/deepinsight/insightface 에서 `buffalo_l` 모델 팩의
+   `w600k_r50.onnx`(또는 동등한 ArcFace R100 가중치)를 받습니다.
+   - 비상업 연구용 라이선스입니다 — 상업적으로 쓰면 안 됩니다 (자세한 내용은
+     `example/assets/models/arcface_buffalo_l/manifest.json`의 `license` 필드).
+2. ONNX를 TFLite로 변환합니다:
+   ```bash
+   # TODO: 변환 명령어를 여기에 채우세요 (onnx2tf / onnx-tf 등 — 모델·툴 버전에 따라 다름)
+
+   ```
+3. 변환된 파일을 정확히 이 경로/이름으로 둡니다:
+   ```
+   example/assets/models/arcface_buffalo_l/w600k_r50.tflite
+   ```
+4. `example/lib/main.dart` 상단의 상수를 바꿔 활성 모델을 전환합니다:
+   ```dart
+   const _embedderDir = 'assets/models/arcface_buffalo_l';
+   const _embedderFile = 'w600k_r50.tflite';
+   ```
+5. 이 파일이 없는 채로 앱을 실행하면 `_setup()`에서 모델 로드가 실패해 화면에
+   "초기화 실패: ..." 메시지가 뜹니다 — 정상적인 동작이니 당황하지 마세요.
+
+### A.2 manifest.json 스키마
+
+`ModelManifest.fromJson()`([lib/src/inference/model_manifest.dart](../../lib/src/inference/model_manifest.dart))이
+파싱하는 필드입니다:
+
+```jsonc
+{
+  "name": "모델 식별용 이름",
+  "family": "arcface",              // 아래 A.3의 어댑터 선택 키
+  "file": "가중치_파일명.tflite",     // manifest.json과 같은 폴더 기준 상대경로
+  "input": {
+    "width": 112, "height": 112,     // 모델이 기대하는 정사각 입력 크기
+    "color": "RGB",                  // "RGB" | "BGR"
+    "layout": "NHWC",
+    "normalize": {
+      "mean": [127.5, 127.5, 127.5], // 채널별 (pixel - mean) / std
+      "std": [127.5, 127.5, 127.5]
+    }
+  },
+  "output": {
+    "dim": 512,                      // 임베딩 차원
+    "l2_normalize": true             // 후처리에서 L2 정규화를 적용할지
+  },
+  "alignment": {
+    "type": "five_point_affine",
+    "reference": "arcface_112"       // affine_aligner.dart의 기준 좌표 세트
+  },
+  "matching": {
+    "metric": "cosine",
+    "threshold": 0.40,               // CosineMatcher.fromManifest()가 읽는 값
+    "threshold_note": "실측 근거를 여기 남길 것"
+  },
+  "license": {
+    "tier": "bundled",               // "bundled" | "research" | "byom" | "licensed"
+    "redistributable": false,        // release 빌드에서 로드 가능 여부 (부록 B 참고)
+    "source": "출처/원본 저장소",
+    "note": "라이선스 조건 설명"
+  }
+}
+```
+
+`input`/`output`/`alignment` 값은 모델마다 다르므로 원본 모델의 학습·전처리
+컨벤션을 반드시 확인하고 채우세요 — 예를 들어 AdaFace는 `color: "BGR"`, FaceNet은
+112가 아니라 160 입력에 정규화도 다른 방식(prewhiten)을 씁니다.
+
+### A.3 새 family 등록하기 (어댑터 연결)
+
+`family` 값은 `lib/src/embedding/face_embedder.dart`의 `adapterForFamily()`가
+어떤 전처리/후처리 어댑터를 쓸지 고르는 키입니다:
+
+```dart
+EmbedderAdapter adapterForFamily(String family) {
+  switch (family) {
+    case 'arcface':
+    case 'adaface':
+    case 'mobilefacenet':
+    case 'auraface':
+      return const ArcfaceAdapter();   // 112x112, (pixel-mean)/std 공통 컨벤션
+    case 'facenet':
+      return const FacenetAdapter();   // 160x160, per-image prewhiten
+    default:
+      throw ArgumentError('No embedder adapter registered for family "$family"');
+  }
+}
+```
+
+- 기존 `ArcfaceAdapter`/`FacenetAdapter`와 같은 입력 컨벤션을 쓰는 모델이면 —
+  AuraFace가 그랬던 것처럼 — **새 `case`만 추가하고 기존 어댑터를 재사용**하면
+  됩니다.
+- 완전히 다른 전처리(예: 다른 정규화 공식, 추가 출력 텐서 처리 등)가 필요하면
+  `lib/src/embedding/adapters/embedder_adapter.dart`의 `EmbedderAdapter`
+  인터페이스(`preprocess`/`postprocess`)를 구현하는 새 어댑터를 만들고, 여기
+  `switch`에 등록하세요.
+
+## 부록 B — 라이선스
+
+### 동봉된 모델
+
+| 모델 | 라이선스 | 출처 |
+|---|---|---|
+| BlazeFace short-range (검출) | Apache 2.0 | https://github.com/google/mediapipe |
+| MediaPipe Face Landmarker (478점, 라이브니스용) | Apache 2.0 | https://github.com/google/mediapipe |
+| AuraFace (glintr100/ResNet100, 기본 임베딩) | Apache 2.0 | [fal/AuraFace-v1](https://huggingface.co/fal/AuraFace-v1) — `.tflite` 가중치 자체는 용량 때문에 리포에 커밋하지 않고 `tool/fetch_models.sh`로 GitHub Release에서 받음 (라이선스 문제로 뺀 게 아님) |
+
+셋 다 상업적 사용이 가능한 라이선스라 별도 BYOM 절차 없이 그대로 동작합니다.
+`arcface_buffalo_l` 등 부록 A에서 다루는 추가 모델들은 대부분 비상업 연구용
+라이선스라 직접 받아와야 합니다.
+
+### `assertLoadable()` 가드가 차단하는 것
+
+각 모델의 `manifest.json`에는 `license.tier`(`bundled`/`research`/`byom`/`licensed`)와
+`license.redistributable`(불리언)이 있습니다.
+[`ModelManifest.assertLoadable()`](../../lib/src/inference/model_manifest.dart)이
+매 모델 로드 시점(`TfliteFaceEmbedder.fromAsset`/`fromFile`)에 이렇게 검사합니다:
+
+```dart
+void assertLoadable({required bool isReleaseBuild}) {
+  if (isReleaseBuild && !license.redistributable) {
+    throw StateError(
+      'manifest "$name": license.redistributable=false (tier=${license.tier.name}, '
+      'source=${license.source}) — this model must not be loaded in a release build',
+    );
+  }
+}
+```
+
+즉 **`redistributable: false`인 모델은 release 빌드(`kReleaseMode == true`)에서
+로드 자체가 코드 레벨로 막힙니다** — 문서로만 "상업 배포 금지"라고 적어두는 게
+아니라, 실수로 그런 모델을 넣은 채 배포 빌드를 만들어도 앱이 그 시점에 에러를
+던지도록 강제합니다. `--debug`/`--profile` 빌드는 이 가드에 걸리지 않으므로,
+연구용 모델로 개발·성능 측정은 계속할 수 있습니다.
+
+`ModelManifest.validate()`도 함께 확인합니다 — `tier: "research"`이면서
+`redistributable: true`인 모순된 조합은 애초에 매니페스트 파싱 단계에서
+거부됩니다.
+
+---
+
+더 깊은 내용(아키텍처, 벤치마크 방법론)은 [architecture.md](architecture.md),
 [benchmark.md](benchmark.md), [liveness.md](liveness.md)를 참고하세요.

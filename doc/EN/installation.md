@@ -93,151 +93,78 @@ is also fine.
    `Linux toolchain` entry (clang/ninja/gtk3 for desktop builds) **can be
    ignored if you're only targeting Android.**
 
-## 3. Clone the repo
+## 3. Prepare a device — USB debugging
 
-```bash
-git clone https://github.com/wahihi/facekit.git
-cd facekit
-```
+You need a device connected ahead of time to install straight to it with
+`flutter run`.
 
-## 4. Install dependencies
-
-facekit contains two independent Flutter projects in one repo — the
-package itself (root) and the example app — **both** need their
-dependencies fetched.
-
-```bash
-flutter pub get            # root (the facekit package)
-cd example
-flutter pub get            # the example app
-cd ..
-```
-
-## 5. Prepare the embedding model (BYOM) — the app won't launch without this
-
-facekit only bundles the detection model (BlazeFace) and the landmark
-model used for liveness — **the embedding model is not in the repo** (see
-the license policy in
-[README.md](../../README.md#license--model-policy-byom)). The example app
-defaults to using ArcFace (`buffalo_l`), whose weight file you need to
-obtain and place yourself.
-
-```bash
-ls example/assets/models/arcface_buffalo_l/
-# It's normal to see only manifest.json, with no .tflite (excluded via .gitignore)
-```
-
-1. Get `w600k_r50.onnx` (or an equivalent ArcFace R100 weight) from the
-   `buffalo_l` model pack at
-   https://github.com/deepinsight/insightface.
-   - This is a non-commercial research license — it must not be used
-     commercially (see the `license` field in
-     `example/assets/models/arcface_buffalo_l/manifest.json` for details).
-2. Convert the ONNX to TFLite (`onnx2tf`, `onnx-tf`, etc. — the exact
-   conversion steps vary by model/tool version, so this doc doesn't cover
-   them).
-3. Place the converted file at exactly this path/name:
-   ```
-   example/assets/models/arcface_buffalo_l/w600k_r50.tflite
-   ```
-4. Running the app without this file present will fail model loading in
-   `_setup()` and show an "Initialization failed: ..." message on screen —
-   that's expected behavior, don't be alarmed.
-
-> To swap in a different embedding model such as AdaFace, see
-> `lib/src/embedding/adapters/` and
-> [architecture.md](architecture.md). If you just want to look at the code
-> structure without using any actual model, you can skip this step and go
-> straight to step 6 — but in that case the example app will get as far as
-> the camera preview and then not function at the enroll/identify step.
-
-## 6. Build
-
-Run from the `example/` directory.
-
-```bash
-cd example
-```
-
-### 6-1. During development — run straight on a device (the command you'll use most)
-
-```bash
-flutter run
-```
-
-If multiple devices are connected, check with `flutter devices` and target
-one with `-d <device-id>`. This builds in debug mode and runs immediately,
-with hot reload (the `r` key) available.
-
-### 6-2. Build an APK only (when you just need the install file)
-
-```bash
-flutter build apk --debug      # for debugging — fastest build, no optimization
-flutter build apk --profile    # for performance measurement — AOT-optimized, some debug tooling limited
-flutter build apk --release    # for distribution — maximum optimization
-```
-
-The output location is the same pattern across all modes:
-```
-example/build/app/outputs/flutter-apk/app-{debug,profile,release}.apk
-```
-
-> ⚠️ **`--release` fails at run time in this example.** Since the ArcFace
-> demo model's manifest has `redistributable: false`,
-> `ModelManifest.assertLoadable()` **blocks loading the model at the code
-> level in release builds** (to protect the license, see
-> [lib/src/inference/model_manifest.dart](../../lib/src/inference/model_manifest.dart)).
-> Use `--profile` to look at performance instead — its AOT optimization
-> matches release without tripping this guard. See
-> [benchmark.md](benchmark.md) for the full reasoning.
-
-## 7. Install onto a device
-
-### 7-1. Turn on developer options / USB debugging on the phone
-
-1. **Settings → About phone (device info)** → tap **Build number** 7 times
-   in a row
+1. On the phone: **Settings → About phone (device info)** → tap **Build
+   number** 7 times in a row
 2. **Settings → System → Developer options** → turn on **USB debugging**
 3. Connect to the PC via USB → when **"Allow USB debugging?"** pops up on
    the phone → check **Always allow from this computer** and allow it
+4. Confirm it's recognized from the PC:
+   ```bash
+   adb devices -l
+   ```
+   It's fine if the device serial shows up with state `device`.
 
-### 7-2. Confirm recognition from the PC
+   - **If it shows `no permissions (missing udev rules?)` (Linux-only
+     issue)** — there's no udev permission rule for Google devices (vendor
+     ID `18d1`):
+     ```bash
+     echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", MODE="0666", GROUP="plugdev"' \
+       | sudo tee /etc/udev/rules.d/51-android.rules
+     sudo udevadm control --reload-rules
+     sudo udevadm trigger
+     ```
+     Then unplug and replug the USB cable and confirm the allow-prompt on
+     the phone again. (Your account needs to be in the `plugdev` group —
+     check with the `groups` command.)
+   - **If it shows `unauthorized`** — you haven't tapped the USB-debugging
+     allow prompt on the phone screen yet. Reconnect the cable and check
+     for the prompt.
+
+## 4. Quick start (the default path)
+
+Once the environment (steps 0–3) is set up, **the four steps below are all
+it takes to get enroll/recognize working** — no need to source or convert
+an embedding model yourself. The default embedding model, **AuraFace**
+(Apache 2.0, commercially redistributable), is fetched automatically from a
+GitHub Release.
 
 ```bash
-adb devices -l
+# 1. Clone
+git clone https://github.com/wahihi/facekit.git
+cd facekit
+
+# 2. Install dependencies (for the example app)
+cd example
+flutter pub get
+
+# 3. Download the embedding model (AuraFace, ~130MB, one-time)
+bash ../tool/fetch_models.sh
+
+# 4. Run
+flutter run
 ```
 
-It's fine if the device serial shows up with state `device`.
+`tool/fetch_models.sh` fetches the `.tflite` weight from a GitHub Release,
+verifies its integrity via SHA256, and places it under
+`example/assets/models/auraface/`. It's a no-op and exits immediately if
+the file is already present, so it's safe to run again any number of
+times.
 
-- **If it shows `no permissions (missing udev rules?)` (Linux-only issue)**
-  — there's no udev permission rule for Google devices (vendor ID `18d1`):
-  ```bash
-  echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", MODE="0666", GROUP="plugdev"' \
-    | sudo tee /etc/udev/rules.d/51-android.rules
-  sudo udevadm control --reload-rules
-  sudo udevadm trigger
-  ```
-  Then unplug and replug the USB cable and confirm the allow-prompt on the
-  phone again. (Your account needs to be in the `plugdev` group — check
-  with the `groups` command.)
+Once `flutter run` launches, you'll see the camera screen. **Tap "등록"
+(Register) to enroll a name, then tap "실시간 인식 시작" (Start live
+recognition) to start re-recognizing right away.** If you want to use a
+different embedding model (like ArcFace) or want to understand the
+manifest structure in more depth, see
+[Appendix A](#appendix-a--using-other-embedding-models-byom); for the
+license of the bundled models, see
+[Appendix B](#appendix-b--licensing).
 
-### 7-3. Install the APK
-
-If connected via USB:
-```bash
-adb install -r build/app/outputs/flutter-apk/app-profile.apk
-```
-
-If you'd rather install over the same Wi-Fi network without USB, you can
-also spin up a temporary download server on the PC and fetch it from the
-phone's browser:
-```bash
-cd build/app/outputs/flutter-apk
-python3 -m http.server 8765 --bind 0.0.0.0
-# On the phone's browser, visit http://<PC's LAN IP>:8765/app-profile.apk and download
-```
-
-## 8. Viewing logs (watching what's happening)
+## 5. Viewing logs (watching what's happening)
 
 ```bash
 flutter logs
@@ -256,22 +183,67 @@ build). For example:
 [FacePipeline] match: id=나 similarity=0.873 accepted=true
 ```
 
-## 9. Running the tests
+For more detailed internal pipeline logging (the alignment matrix, raw
+embedding stats, etc.), turn it on with
+`flutter run --dart-define=FACEKIT_VERBOSE_DEBUG=true` — it's off by
+default and doesn't ship in a normal build at all.
+
+## 6. Running the tests
 
 ```bash
-flutter test               # unit tests for the root (facekit package)
+flutter test               # unit tests for the root (facekit package) — needs its own flutter pub get at the root
 cd example && flutter test # widget tests for the example app
 ```
 
-## 10. Common issues
+## 7. Build modes reference (if you want release/profile)
+
+`flutter run` builds in debug mode by default. If you want to look at
+performance or need a distributable APK:
+
+```bash
+flutter build apk --debug      # for debugging — fastest build, no optimization
+flutter build apk --profile    # for performance measurement — AOT-optimized, some debug tooling limited
+flutter build apk --release    # for distribution — maximum optimization
+```
+
+The output location is the same pattern across all modes:
+```
+example/build/app/outputs/flutter-apk/app-{debug,profile,release}.apk
+```
+
+**The default embedding model (AuraFace) is `bundled`/`redistributable:
+true`, so it loads fine even in a `--release` build.** However, if you
+follow [Appendix A](#appendix-a--using-other-embedding-models-byom) and
+switch to a research-tier model like `arcface_buffalo_l`,
+`ModelManifest.assertLoadable()` **blocks loading the model at the code
+level in release builds** (to protect the license — see
+[Appendix B](#appendix-b--licensing) for exactly how). In that case, use
+`--profile` to look at performance instead — its AOT optimization matches
+release without tripping this guard. See [benchmark.md](benchmark.md) for
+the full reasoning.
+
+To install the APK directly:
+```bash
+adb install -r build/app/outputs/flutter-apk/app-profile.apk
+```
+If you'd rather install over the same Wi-Fi network without USB, you can
+also spin up a temporary download server on the PC and fetch it from the
+phone's browser:
+```bash
+cd build/app/outputs/flutter-apk
+python3 -m http.server 8765 --bind 0.0.0.0
+# On the phone's browser, visit http://<PC's LAN IP>:8765/app-profile.apk and download
+```
+
+## 8. Common issues
 
 | Symptom | Cause / fix |
 |---|---|
 | `Target file "lib/main.dart" not found` | You ran `flutter run` from the repo root — `cd example` first |
 | `dart:ffi` error on web (`flutter run -d chrome`) | `tflite_flutter` uses `dart:ffi`, which the web doesn't support — this SDK doesn't support web; run on Android (or iOS/desktop) |
-| Model fails to load in a `--release` build | See 6-2 above — the BYOM demo model's license guard. Use `--profile` or `--debug` instead |
-| "Initialization failed: ..." (the app's first screen) | Most likely step 5 (preparing the BYOM model) wasn't done — check the `.tflite` file's location |
-| `adb devices` shows `no permissions` | Add the udev rule from 7-2 |
+| "Initialization failed: ... Model file is missing" (the app's first screen) | You likely haven't run `tool/fetch_models.sh` yet — see step 4 (Quick start) |
+| Model fails to load in a `--release` build after switching to a BYOM model | See step 7 above — the research-tier model's license guard. Use `--profile` or `--debug` instead |
+| `adb devices` shows `no permissions` | Add the udev rule from step 3 |
 | `adb devices` shows `unauthorized` | You haven't tapped the USB-debugging allow prompt on the phone screen — reconnect the cable and check for the prompt |
 | A single `CameraException(Disposed CameraController...)` log line on first launch | Appears to be one-off noise from installing an update over a running app with `adb install -r` (previous process cleanup timing) — safe to ignore if everything works afterward; if it recurs after a full restart, investigate separately |
 | "Kotlin Gradle Plugin (KGP)" warning during the Gradle build | Related to the `camera_android_camerax` plugin, doesn't currently block the build — safe to ignore |
@@ -279,6 +251,177 @@ cd example && flutter test # widget tests for the example app
 
 ---
 
-For deeper material (architecture, how to swap models, benchmark
-methodology), see [architecture.md](architecture.md),
-[benchmark.md](benchmark.md), and [liveness.md](liveness.md).
+## Appendix A — Using other embedding models (BYOM)
+
+For when you want to source and use a different embedding model (ArcFace,
+AdaFace, etc.) instead of the default (AuraFace). facekit swaps embedding
+models via a manifest-driven structure, so **the model itself is never
+committed to the repo** — you just place a manifest.json + `.tflite` at the
+expected path.
+
+### A.1 Example — preparing ArcFace (buffalo_l)
+
+`example/assets/models/arcface_buffalo_l/manifest.json` already exists in
+the repo and is kept as a BYOM example. You just need to supply the
+`.tflite` weight yourself.
+
+```bash
+ls example/assets/models/arcface_buffalo_l/
+# It's normal to see only manifest.json, with no .tflite (excluded via .gitignore)
+```
+
+1. Get `w600k_r50.onnx` (or an equivalent ArcFace R100 weight) from the
+   `buffalo_l` model pack at
+   https://github.com/deepinsight/insightface.
+   - This is a non-commercial research license — it must not be used
+     commercially (see the `license` field in
+     `example/assets/models/arcface_buffalo_l/manifest.json` for details).
+2. Convert the ONNX to TFLite:
+   ```bash
+   # TODO: fill in the conversion command here (onnx2tf / onnx-tf / etc. — varies by model/tool version)
+
+   ```
+3. Place the converted file at exactly this path/name:
+   ```
+   example/assets/models/arcface_buffalo_l/w600k_r50.tflite
+   ```
+4. Switch the active model by changing the constants at the top of
+   `example/lib/main.dart`:
+   ```dart
+   const _embedderDir = 'assets/models/arcface_buffalo_l';
+   const _embedderFile = 'w600k_r50.tflite';
+   ```
+5. Running the app without this file present will fail model loading in
+   `_setup()` and show an "Initialization failed: ..." message on screen —
+   that's expected behavior, don't be alarmed.
+
+### A.2 manifest.json schema
+
+The fields parsed by `ModelManifest.fromJson()`
+([lib/src/inference/model_manifest.dart](../../lib/src/inference/model_manifest.dart)):
+
+```jsonc
+{
+  "name": "a name to identify the model",
+  "family": "arcface",              // the adapter-selection key, see A.3 below
+  "file": "weight_file.tflite",     // relative to the same folder as manifest.json
+  "input": {
+    "width": 112, "height": 112,     // the square input size the model expects
+    "color": "RGB",                  // "RGB" | "BGR"
+    "layout": "NHWC",
+    "normalize": {
+      "mean": [127.5, 127.5, 127.5], // per-channel (pixel - mean) / std
+      "std": [127.5, 127.5, 127.5]
+    }
+  },
+  "output": {
+    "dim": 512,                      // embedding dimension
+    "l2_normalize": true             // whether postprocessing L2-normalizes it
+  },
+  "alignment": {
+    "type": "five_point_affine",
+    "reference": "arcface_112"       // one of the reference point sets in affine_aligner.dart
+  },
+  "matching": {
+    "metric": "cosine",
+    "threshold": 0.40,               // read by CosineMatcher.fromManifest()
+    "threshold_note": "record the measurement this threshold is based on here"
+  },
+  "license": {
+    "tier": "bundled",               // "bundled" | "research" | "byom" | "licensed"
+    "redistributable": false,        // whether it's allowed to load in a release build (see Appendix B)
+    "source": "origin / source repository",
+    "note": "explanation of the license terms"
+  }
+}
+```
+
+`input`/`output`/`alignment` values differ per model, so always check the
+original model's training/preprocessing convention before filling them
+in — for example, AdaFace uses `color: "BGR"`, and FaceNet takes 160
+(not 112) input with a different normalization scheme (prewhiten)
+entirely.
+
+### A.3 Registering a new family (wiring up an adapter)
+
+The `family` value is the key `adapterForFamily()` in
+`lib/src/embedding/face_embedder.dart` uses to pick a pre/post-processing
+adapter:
+
+```dart
+EmbedderAdapter adapterForFamily(String family) {
+  switch (family) {
+    case 'arcface':
+    case 'adaface':
+    case 'mobilefacenet':
+    case 'auraface':
+      return const ArcfaceAdapter();   // shared 112x112, (pixel-mean)/std convention
+    case 'facenet':
+      return const FacenetAdapter();   // 160x160, per-image prewhiten
+    default:
+      throw ArgumentError('No embedder adapter registered for family "$family"');
+  }
+}
+```
+
+- If your model shares the same input convention as an existing adapter
+  (`ArcfaceAdapter`/`FacenetAdapter`) — as AuraFace did — **just add a new
+  `case` and reuse the existing adapter.**
+- If it needs completely different preprocessing (a different
+  normalization formula, extra output tensors to handle, etc.), implement
+  the `EmbedderAdapter` interface
+  (`preprocess`/`postprocess`) in
+  `lib/src/embedding/adapters/embedder_adapter.dart` with a new adapter,
+  and register it in this `switch`.
+
+## Appendix B — Licensing
+
+### Bundled models
+
+| Model | License | Source |
+|---|---|---|
+| BlazeFace short-range (detection) | Apache 2.0 | https://github.com/google/mediapipe |
+| MediaPipe Face Landmarker (478-point, used for liveness) | Apache 2.0 | https://github.com/google/mediapipe |
+| AuraFace (glintr100/ResNet100, default embedding) | Apache 2.0 | [fal/AuraFace-v1](https://huggingface.co/fal/AuraFace-v1) — the `.tflite` weight itself isn't committed to the repo (fetched via `tool/fetch_models.sh` from a GitHub Release) purely because of its size, not a license restriction |
+
+All three have commercially usable licenses, so they work out of the box
+with no BYOM steps needed. The additional models covered in Appendix A
+(`arcface_buffalo_l` etc.) are mostly non-commercial research licenses that
+you need to source yourself.
+
+### What the `assertLoadable()` guard blocks
+
+Each model's `manifest.json` has `license.tier`
+(`bundled`/`research`/`byom`/`licensed`) and `license.redistributable`
+(a boolean).
+[`ModelManifest.assertLoadable()`](../../lib/src/inference/model_manifest.dart)
+checks this every time a model is loaded (`TfliteFaceEmbedder.fromAsset`/`fromFile`):
+
+```dart
+void assertLoadable({required bool isReleaseBuild}) {
+  if (isReleaseBuild && !license.redistributable) {
+    throw StateError(
+      'manifest "$name": license.redistributable=false (tier=${license.tier.name}, '
+      'source=${license.source}) — this model must not be loaded in a release build',
+    );
+  }
+}
+```
+
+In other words, **a model with `redistributable: false` is blocked from
+loading at the code level in a release build (`kReleaseMode == true`)** —
+this isn't just a "no commercial distribution" note left in the docs; the
+app is forced to throw at that point even if such a model accidentally
+ends up in a distribution build. `--debug`/`--profile` builds don't trip
+this guard, so development and performance measurement with a
+research-tier model can still continue.
+
+`ModelManifest.validate()` checks this too — a contradictory combination
+of `tier: "research"` with `redistributable: true` is rejected right at
+manifest-parsing time.
+
+---
+
+For deeper material (architecture, benchmark methodology), see
+[architecture.md](architecture.md), [benchmark.md](benchmark.md), and
+[liveness.md](liveness.md).

@@ -9,7 +9,9 @@ implementation written from public models, papers, and official docs only —
 no proprietary or third-party commercial code was referenced or copied.
 
 - Code: **Apache License 2.0** ([LICENSE](LICENSE))
-- Embedding models: **BYOM (Bring Your Own Model)** — see
+- Embedding: ships with **AuraFace (Apache 2.0, commercially usable)** as
+  the default, bundled model; other models can still be swapped in via the
+  manifest (BYOM structure preserved) — see
   [License / Model Policy](#license--model-policy-byom) below
 
 ---
@@ -22,9 +24,9 @@ network calls).
 
 - **Detection**: BlazeFace (MediaPipe, Apache 2.0) — bundled with the SDK,
   no separate download needed
-- **Embedding**: a swappable-model architecture — adapters built in for
-  ArcFace / AdaFace / MobileFaceNet / FaceNet. Actual weights are BYOM
-  (bring your own)
+- **Embedding**: a swappable-model architecture — ships with **AuraFace**
+  (Apache 2.0) as the default, plus adapters built in for ArcFace / AdaFace
+  / MobileFaceNet / FaceNet, whose weights remain BYOM (bring your own)
 - **Matching**: cosine similarity, accept/reject decided by the manifest's
   threshold
 - **Liveness (Free)**: blink detection (EAR) — holding up a static photo
@@ -38,9 +40,9 @@ See [doc/EN/architecture.md](doc/EN/architecture.md) /
 ## Quick start
 
 New to Flutter/Android dev entirely? See the step-by-step
-[installation guide](doc/KR/installation.md) (Korean) covering OS/hardware
-requirements, SDK setup, BYOM model placement, building, and installing on a
-device.
+[installation guide](doc/EN/installation.md) (also
+[in Korean](doc/KR/installation.md)) covering OS/hardware requirements, SDK
+setup, the default AuraFace path, building, and installing on a device.
 
 ```dart
 import 'package:facekit/facekit.dart';
@@ -116,22 +118,28 @@ and **is not included in this repository.** See
 All code written for this project is **Apache License 2.0**
 ([LICENSE](LICENSE)).
 
-This SDK does **not** bundle embedding model weights. Each
-`assets/models/*/manifest.json` declares its license via
-`license.tier`/`license.redistributable`, and `.gitignore` excludes any
+This SDK ships **AuraFace (Apache 2.0), a commercially usable embedding
+model, by default** — its weight is fetched at build/dev time via
+`tool/fetch_models.sh` rather than committed directly (a size concern, not
+a license one). The manifest-driven adapter architecture underneath is
+still BYOM-capable: any other embedding model can be swapped in by
+dropping in its `manifest.json` + `.tflite`, and `.gitignore` excludes any
 non-redistributable weight file from the repository:
 
 | Model | Role | License | Bundled |
 |---|---|---|---|
 | BlazeFace short-range | Detection | Apache 2.0 (MediaPipe) | ✅ Yes |
 | MediaPipe Face Landmarker (478-pt) | Liveness landmarks | Apache 2.0 (MediaPipe) | ✅ Yes |
-| ArcFace (buffalo_l / w600k_r50) | Embedding | Non-commercial research (InsightFace) | ❌ BYOM |
+| AuraFace (glintr100 / ResNet100) | Embedding (default) | Apache 2.0 (fal.ai) | ✅ Yes (fetched via `tool/fetch_models.sh`) |
+| ArcFace (buffalo_l / w600k_r50) | Embedding (BYOM example) | Non-commercial research (InsightFace) | ❌ BYOM |
 | AdaFace (IR-101 / WebFace12M) | Embedding | Non-commercial research (mk-minchul/AdaFace) | ❌ BYOM |
 | FaceNet512 | Embedding | Non-commercial research | ❌ BYOM |
 | MobileFaceNet | Embedding | Varies by distribution (verify before use) | ❌ BYOM |
 
 BYOM models must be sourced directly from the repository listed in each
-manifest's `license.source` and placed in that model's folder.
+manifest's `license.source` and placed in that model's folder — see
+[Appendix A](doc/EN/installation.md#appendix-a--using-other-embedding-models-byom)
+of the installation guide for the full walkthrough.
 `ModelManifest.assertLoadable()` actively **blocks loading any
 `redistributable:false` model in a release build**, enforcing the license
 boundary in code, not just in docs
