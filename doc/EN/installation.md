@@ -195,6 +195,19 @@ flutter test               # unit tests for the root (facekit package) — needs
 cd example && flutter test # widget tests for the example app
 ```
 
+Two of these, `test/detection/blazeface_smoke_test.dart` and
+`test/landmark/face_landmarker_smoke_test.dart`, actually load a real,
+bundled (Apache 2.0) `.tflite` model through `tflite_flutter` and run
+inference. They work fine on a real device (an Android device connected as
+in steps 7–8 above) or a normal local dev setup, but **they fail in CI**
+(GitHub Actions' `ubuntu-latest` runner) — `tflite_flutter` needs a native
+library (`libtensorflowlite_c.so`) that's included in the Android/iOS
+runtime but absent from a bare Linux desktop environment. Because of that,
+[`.github/workflows/test.yml`](../../.github/workflows/test.yml)
+excludes just these two and runs the rest (pure Dart logic tests)
+automatically — treat these two as verified via real-device testing
+instead of CI.
+
 ## 7. Build modes reference (if you want release/profile)
 
 `flutter run` builds in debug mode by default. If you want to look at

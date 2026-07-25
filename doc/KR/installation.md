@@ -174,6 +174,17 @@ flutter test               # 루트(facekit 패키지) 단위 테스트 — 별�
 cd example && flutter test # example 앱 위젯 테스트
 ```
 
+이 중 `test/detection/blazeface_smoke_test.dart`와
+`test/landmark/face_landmarker_smoke_test.dart`는 리포에 동봉된(Apache 2.0) 실제
+`.tflite` 모델을 `tflite_flutter`로 진짜 로드해서 추론까지 돌립니다. 실기기(위
+7~8번처럼 연결된 Android 기기)나 정상적인 로컬 개발 환경에서는 문제없이
+동작하지만, **CI(GitHub Actions의 `ubuntu-latest` 러너)에서는 실패합니다** —
+`tflite_flutter`가 필요로 하는 네이티브 라이브러리(`libtensorflowlite_c.so`)가
+Android/iOS 런타임에는 포함되어 있지만 순정 리눅스 데스크톱 환경엔 없기 때문입니다.
+그래서 [`.github/workflows/test.yml`](../../.github/workflows/test.yml)은 이
+두 테스트만 제외하고 나머지(순수 Dart 로직 테스트)만 자동 실행합니다 — 이 둘은
+CI가 아니라 실기기 테스트로 검증된 것으로 간주하세요.
+
 ## 7. 빌드 모드 참고 (release/profile을 쓰고 싶다면)
 
 `flutter run`은 기본적으로 디버그 모드입니다. 성능을 보거나 배포용 APK가
