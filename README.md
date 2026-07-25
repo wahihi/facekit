@@ -87,8 +87,30 @@ benchmark button — lives in [example/](example/).
 ## Benchmark
 
 Measured on real devices using the example app's built-in benchmark button
-(n=30, profile build). Full methodology, VM comparison, and accuracy (EER)
-tables are in [doc/KR/benchmark.md](doc/KR/benchmark.md).
+(n=30). Full methodology, VM comparison, and accuracy (EER) tables are in
+[doc/EN/benchmark.md](doc/EN/benchmark.md) (also
+[in Korean](doc/KR/benchmark.md)).
+
+**AuraFace (the default embedding model)** — Pixel 7, `--release` build
+(the same APK published to
+[GitHub Releases](https://github.com/wahihi/facekit/releases)), two
+independent runs after a reinstall:
+
+| Device | Mode | Detection (BlazeFace) | Embedding (AuraFace) | Full frame |
+|---|---|---|---|---|
+| Pixel 7 | CPU (default) | avg 51–52ms | avg 1083–1186ms | avg 1135–1238ms |
+| Pixel 7 | NNAPI | avg 50–61ms | avg 1106–1205ms | avg 1156–1267ms |
+
+No Galaxy S25 numbers for AuraFace yet. The ~9–10% spread between the two
+runs (detection stayed stable) looks like ordinary device variance
+(thermal, background load, cold state after reinstall), not a bug — see
+the full doc for both runs in detail. AuraFace (ResNet100) is ~1.2–1.5x
+slower than ArcFace buffalo_l (ResNet50) below, which tracks with the
+deeper backbone.
+
+**ArcFace buffalo_l (a BYOM example, non-default)** — `--profile` build
+(ArcFace's research-tier license blocks it from loading in `--release` at
+all; see below):
 
 | Device | Mode | Detection (BlazeFace) | Embedding (ArcFace buffalo_l) | Full frame |
 |---|---|---|---|---|
@@ -97,14 +119,20 @@ tables are in [doc/KR/benchmark.md](doc/KR/benchmark.md).
 | Galaxy S25 (SM-S931N) | CPU (default) | avg 48.0ms | avg 256.6ms | avg 305.0ms |
 | Galaxy S25 (SM-S931N) | NNAPI | avg 44.7ms | avg 244.4ms | avg 289.5ms |
 
-The default is CPU-only. On Pixel 7 (Google Tensor G2), NNAPI is slower due
-to float32 fallback overhead. On Galaxy S25 (Snapdragon 8 Elite), NNAPI
-averages ~15ms faster but with much higher p95 variance (386ms vs 314ms) —
-CPU remains the safer default for real-time use.
+The default is CPU-only in both cases. On Pixel 7, NNAPI's full-frame mean
+is slightly slower than CPU's for both models (more so for ArcFace), and
+p95 is consistently worse under NNAPI. On Galaxy S25 (Snapdragon 8 Elite),
+NNAPI averages ~15ms faster than CPU for ArcFace but with much higher p95
+variance (386ms vs 314ms) — CPU remains the safer default for real-time use
+across the board. Build modes differ between the two tables above (see
+each doc section for why), so treat the ratio between them as a rough
+reference rather than a controlled comparison.
 
 Accuracy (EER on 200 LFW pairs) is 8.5% for ArcFace and 2.0% for AdaFace,
 with AdaFace staying more robust under low-resolution conditions (full
-numbers in [doc/KR/adaface_verification.md](doc/KR/adaface_verification.md)).
+numbers in [doc/EN/adaface_verification.md](doc/EN/adaface_verification.md)).
+AuraFace doesn't have an EER measurement yet (genuine-pair similarity only
+so far — see the open threshold-tuning issue).
 
 ## Liveness / Free vs. Pro boundary
 

@@ -77,19 +77,46 @@ final result = await pipeline.identify(faceImage, gallery);     // 인식 → Ma
 
 ## 벤치마크
 
-Pixel 7 실기기에서 example 앱 내장 벤치마크 버튼으로 측정 (n=30, profile 빌드).
-방법론·VM 비교·정확도(EER) 표 등 전체 내용은 [doc/KR/benchmark.md](benchmark.md) 참고.
+실기기에서 example 앱 내장 벤치마크 버튼으로 측정 (n=30). 방법론·VM 비교·
+정확도(EER) 표 등 전체 내용은 [doc/KR/benchmark.md](benchmark.md)(또는
+[영문](../EN/benchmark.md)) 참고.
 
-| 모드 | 검출(BlazeFace) | 임베딩(ArcFace buffalo_l) | 전체 1프레임 |
-|---|---|---|---|
-| CPU (기본값) | 평균 65.1ms | 평균 729.4ms | 평균 795.6ms |
-| NNAPI | 평균 76.6ms | 평균 876.2ms | 평균 954.4ms |
+**AuraFace(기본 임베딩 모델)** — Pixel 7, `--release` 빌드
+([GitHub Releases](https://github.com/wahihi/facekit/releases)에 올라온 것과
+동일한 APK), 재설치 후 독립적으로 2회 측정:
 
-실측 결과 이 모델 조합(float32)에서는 NNAPI가 CPU보다 오히려 느려서, 기본값은 CPU
-고정으로 유지하고 있습니다 — 자세한 원인 분석은 위 문서에 정리했습니다.
+| 기기 | 모드 | 검출(BlazeFace) | 임베딩(AuraFace) | 전체 1프레임 |
+|---|---|---|---|---|
+| Pixel 7 | CPU (기본값) | 평균 51~52ms | 평균 1083~1186ms | 평균 1135~1238ms |
+| Pixel 7 | NNAPI | 평균 50~61ms | 평균 1106~1205ms | 평균 1156~1267ms |
+
+Galaxy S25 실측은 아직 없습니다. 두 측정 사이 9~10% 정도 편차(검출은 안정적)는
+발열·백그라운드 프로세스·재설치 직후 콜드 상태 등 실기기 벤치마크에서 흔한
+변동으로 보입니다 — 자세한 두 측정값은 위 문서 참고. AuraFace(ResNet100)는 아래
+ArcFace buffalo_l(ResNet50)보다 1.2~1.5배 느린데, 더 깊은 백본을 감안하면
+납득되는 배율입니다.
+
+**ArcFace buffalo_l (BYOM 예시, 기본값 아님)** — `--profile` 빌드(ArcFace는
+연구용 라이선스라 `--release`에서는 로드 자체가 막힘, 아래 라이선스 섹션 참고):
+
+| 기기 | 모드 | 검출(BlazeFace) | 임베딩(ArcFace buffalo_l) | 전체 1프레임 |
+|---|---|---|---|---|
+| Pixel 7 | CPU (기본값) | 평균 65.1ms | 평균 729.4ms | 평균 795.6ms |
+| Pixel 7 | NNAPI | 평균 76.6ms | 평균 876.2ms | 평균 954.4ms |
+| Galaxy S25 (SM-S931N) | CPU (기본값) | 평균 48.0ms | 평균 256.6ms | 평균 305.0ms |
+| Galaxy S25 (SM-S931N) | NNAPI | 평균 44.7ms | 평균 244.4ms | 평균 289.5ms |
+
+두 모델 다 기본값은 CPU입니다. Pixel 7에서는 두 모델 모두 NNAPI 전체 평균이
+CPU보다 근소하게 느리고(ArcFace 쪽이 더 큼), p95는 NNAPI가 항상 더 나쁩니다.
+Galaxy S25(Snapdragon 8 Elite)에서는 ArcFace 기준 NNAPI가 평균은 ~15ms 더
+빠르지만 p95 분산이 훨씬 큽니다(386ms vs 314ms) — 결국 어느 조합이든 기본값 CPU
+유지가 안전합니다. 위 두 표는 빌드 모드 자체가 다르니(이유는 각 문서 참고),
+둘 사이 배율은 엄밀한 비교가 아니라 참고치로만 보세요.
 
 정확도(LFW 200쌍 기준 EER)는 ArcFace 8.5% / AdaFace 2.0%이며, 저화질 조건에서는
 AdaFace가 더 강건합니다(자세한 수치는 [doc/KR/adaface_verification.md](adaface_verification.md)).
+AuraFace는 아직 EER 측정이 없습니다(지금까지는 동일인 쌍 유사도만 확인 — 남겨둔
+임계값 재튜닝 이슈 참고).
 
 ## 라이브니스 / Free·Pro 경계
 
