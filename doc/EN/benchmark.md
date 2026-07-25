@@ -117,6 +117,65 @@ a worthwhile next optimization candidate.
   `List<List<...>>>` every frame — switching to a typed buffer like
   `Float32List` could reduce this, but that's left as separate future work).
 
+## Real device (Pixel 7, AuraFace, release build, 2026-07-25)
+
+Measured by downloading and installing the **`--release` APK** published to
+the GitHub Release (`v0.1.0`), using the same in-app benchmark button.
+Unlike the ArcFace numbers above, this is a release build — AuraFace is
+`redistributable: true`, so it isn't blocked from loading in a release
+build the way ArcFace was (ArcFace needed `--profile` because of the
+`assertLoadable()` guard, see above). `--profile` and `--release` are both
+AOT-compiled, so inference speed should in principle be similar, but since
+this wasn't measured under the exact same build mode, treat any direct
+ratio against the ArcFace numbers below as a rough reference only.
+
+The same APK was uninstalled and reinstalled, and measured twice (n=30
+each, excluding warmup, repeated on one fixed frame captured by the
+camera):
+
+| Mode | Run | Detection (BlazeFace) | Embedding (AuraFace) | Full frame |
+|---|---|---|---|---|
+| CPU | 1st | mean 51.5ms / p50 49.8ms / p95 63.6ms | mean 1082.7ms / p50 1119.9ms / p95 1215.7ms | mean 1135.3ms / p50 1171.8ms / p95 1275.7ms |
+| CPU | 2nd | mean 50.9ms / p50 49.0ms / p95 62.1ms | mean 1186.2ms / p50 1179.9ms / p95 1332.6ms | mean 1238.1ms / p50 1230.6ms / p95 1391.5ms |
+| NNAPI | 1st | mean 49.5ms / p50 49.0ms / p95 59.7ms | mean 1106.0ms / p50 1086.4ms / p95 1367.0ms | mean 1156.2ms / p50 1136.9ms / p95 1418.7ms |
+| NNAPI | 2nd | mean 61.1ms / p50 60.4ms / p95 90.4ms | mean 1204.5ms / p50 1221.1ms / p95 1377.8ms | mean 1267.3ms / p50 1276.2ms / p95 1432.6ms |
+
+**Embedding alone shifted by about 9–10% between the two independent
+runs** (detection stayed stable at 50–61ms). This looks like ordinary
+real-device benchmark variance (a cold state right after reinstalling,
+thermal effects, background processes) rather than anything indicating a
+bug — but that much swing is itself a reason to report a range instead of
+treating a single run as a fixed value.
+
+**About 1.2–1.5x slower than ArcFace (R50)** — ArcFace buffalo_l uses a
+ResNet50 backbone, while AuraFace (glintr100) uses ResNet100, which is
+simply more compute. The fp16 conversion only shrinks the file size
+(130MB); as long as `TfliteRunner` runs on the plain CPU reference kernels
+with neither XNNPACK nor multithreading enabled (the same cause noted in
+the ArcFace section above), it doesn't speed up inference itself.
+
+**The NNAPI conclusion is the same as ArcFace's — keeping CPU as the
+default is still right.** In both runs, NNAPI's full-frame mean was
+slightly slower than CPU's (+1.8% on the 1st run, +2.4% on the 2nd), and
+p95 was always worse under NNAPI (1418.7 vs 1275.7ms on the 1st run,
+1432.6 vs 1391.5ms on the 2nd). The gap is smaller than ArcFace's (where
+NNAPI was 20% slower), but points the same direction.
+
+**A note on how live recognition feels**: while "실시간 인식 시작" (start
+live recognition) is active, detection+alignment+embedding all run on
+every single frame. A full frame taking 1.1–1.4 seconds means recognition
+mode runs at under 1 fps, which reads as noticeably more sluggish than
+ArcFace's ~0.8s.
+
+### Limitations (this section)
+
+- Only one Pixel 7, measured twice after a reinstall — still a small
+  sample.
+- This is a `--release` build, a different build mode from the ArcFace
+  numbers above (`--profile`) — since the methodology isn't identical,
+  treat any ratio between them as a rough reference only.
+- No real-device AuraFace measurement on the Galaxy S25 yet.
+
 ## Real device (Galaxy S25 SM-S931N, 2026-06-30)
 
 Same methodology as the Pixel 7: the example app's benchmark button, a
