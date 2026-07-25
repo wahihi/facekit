@@ -1,0 +1,58 @@
+name: build
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write   # softprops/action-gh-release needs this to publish a release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2'
+          channel: stable
+
+      # AuraFace's .tflite weight (~130MB) isn't committed to the repo — it
+      # has to be fetched before building, or the resulting APK would
+      # install but fail to load the embedding model at runtime. Runs from
+      # the repo root (the default working-directory), unlike the
+      # `example`-scoped steps below.
+      - name: Fetch the AuraFace model weight
+        run: bash tool/fetch_models.sh
+
+      # The runnable app lives in example/, not the repo root — see
+      # doc/EN/installation.md.
+      - name: example app — pub get
+        run: flutter pub get
+        working-directory: example
+
+      - name: example app — build release APK
+        run: flutter build apk --release
+        working-directory: example
+
+      - name: Rename APK to include the version tag
+        run: |
+          mkdir -p dist
+          cp example/build/app/outputs/flutter-apk/app-release.apk \
+            "dist/facekit-example-${{ github.ref_name }}.apk"
+          sha256sum "dist/facekit-example-${{ github.ref_name }}.apk"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/facekit-example-${{ github.ref_name }}.apk
+          body: |
+            Prebuilt release APK for facekit's example app (${{ github.ref_name }}).
+
+            Ships with **AuraFace** (Apache 2.0) as the default embedding
+            model — no manual model setup needed. Install directly on an
+            Android device (minSdk 24 / Android 7.0+); see
+            [doc/EN/installation.md](https://github.com/wahihi/facekit/blob/main/doc/EN/installation.md)
+            (also [in Korean](https://github.com/wahihi/facekit/blob/main/doc/KR/installation.md))
+            for what it does and how to build it from source instead.
