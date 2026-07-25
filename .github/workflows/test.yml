@@ -1,0 +1,39 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2'
+          channel: stable
+
+      # BYOM embedding-model weights (arcface_buffalo_l, AdaFace, AuraFace's
+      # .tflite, etc.) are deliberately not committed to the repo — the
+      # tests that need real weights (test/embedding/face_embedder_smoke_test.dart,
+      # test/pipeline/face_pipeline_smoke_test.dart) detect that and skip
+      # gracefully instead of failing, so this doesn't need to fetch any
+      # model first. blazeface_short (used by test/detection/blazeface_smoke_test.dart)
+      # is Apache 2.0 and committed to the repo, so it runs for real.
+
+      - name: facekit package — pub get
+        run: flutter pub get
+
+      - name: facekit package — flutter test
+        run: flutter test
+
+      - name: example app — pub get
+        run: flutter pub get
+        working-directory: example
+
+      - name: example app — flutter test
+        run: flutter test
+        working-directory: example

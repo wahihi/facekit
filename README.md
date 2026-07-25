@@ -4,6 +4,8 @@
 
 # facekit
 
+[![test](https://github.com/wahihi/facekit/actions/workflows/test.yml/badge.svg)](https://github.com/wahihi/facekit/actions/workflows/test.yml)
+
 **An on-device face recognition SDK for Flutter.** A clean-room
 implementation written from public models, papers, and official docs only —
 no proprietary or third-party commercial code was referenced or copied.
@@ -56,13 +58,14 @@ final detector = await BlazeFaceDetector.fromAsset(
   manifest: detectorManifest,
 );
 
-// 2) Embedder — BYOM: point this at .tflite weights you sourced yourself
+// 2) Embedder — AuraFace ships by default (Apache 2.0, fetched via
+//    tool/fetch_models.sh); swap the path to use a BYOM model instead
 //    (see the license section below)
 final embedderManifest = ModelManifest.fromJsonString(
-  await rootBundle.loadString('assets/models/arcface_buffalo_l/manifest.json'),
+  await rootBundle.loadString('assets/models/auraface/manifest.json'),
 );
 final embedder = await TfliteFaceEmbedder.fromAsset(
-  tfliteAssetPath: 'assets/models/arcface_buffalo_l/w600k_r50.tflite',
+  tfliteAssetPath: 'assets/models/auraface/auraface_r100_fp16.tflite',
   manifest: embedderManifest,
 );
 

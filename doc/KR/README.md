@@ -4,6 +4,8 @@
 
 # facekit
 
+[![test](https://github.com/wahihi/facekit/actions/workflows/test.yml/badge.svg)](https://github.com/wahihi/facekit/actions/workflows/test.yml)
+
 **Flutter용 온디바이스(On-device) 얼굴인식 SDK.** 공개된 모델·논문·공식 문서만 참고해
 새로 작성한 클린룸(clean-room) 구현입니다 — 사내 코드나 독점 라이브러리를 참조·복사하지
 않았습니다.
@@ -48,12 +50,13 @@ final detector = await BlazeFaceDetector.fromAsset(
   manifest: detectorManifest,
 );
 
-// 2) 임베딩기 — BYOM: 직접 구한 .tflite 가중치 경로를 지정 (아래 라이선스 섹션 참고)
+// 2) 임베딩기 — AuraFace가 기본 동봉(Apache 2.0, tool/fetch_models.sh로 받음).
+//    다른 BYOM 모델을 쓰려면 경로만 바꾸면 됨 (아래 라이선스 섹션 참고)
 final embedderManifest = ModelManifest.fromJsonString(
-  await rootBundle.loadString('assets/models/arcface_buffalo_l/manifest.json'),
+  await rootBundle.loadString('assets/models/auraface/manifest.json'),
 );
 final embedder = await TfliteFaceEmbedder.fromAsset(
-  tfliteAssetPath: 'assets/models/arcface_buffalo_l/w600k_r50.tflite',
+  tfliteAssetPath: 'assets/models/auraface/auraface_r100_fp16.tflite',
   manifest: embedderManifest,
 );
 
