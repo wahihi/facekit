@@ -212,3 +212,54 @@ call** holds equally on the S25.
   input — variance across lighting/angle wasn't measured.
 - Same preprocessing-cost structure as the Pixel 7 section applies (a
   lower-bound figure with no typed-buffer optimization).
+
+## Real device (Galaxy S25 SM-S931N, AuraFace, release build, 2026-07-27)
+
+Measured using the `--release` APK downloaded from the GitHub Release
+(`v0.1.0`) — the same conditions as the Pixel 7 AuraFace measurement above.
+The face in frame belonged to someone other than the person running the
+benchmark, but since this benchmark button **only times
+detection→alignment→embedding and never computes a match/similarity**
+(there's no `similarity`/matching-related code in
+`example/lib/benchmark.dart`), whose face it is has no bearing on this
+result.
+
+**This wasn't the tester's own device and couldn't be re-measured** — so
+unlike the Pixel 7 section, this one has **only a single run**. Read the
+numbers below, especially the NNAPI conclusion, with that in mind.
+
+n=30, excluding warmup, repeated on one fixed frame captured by the camera:
+
+| Mode | Detection (BlazeFace) | Embedding (AuraFace) | Full frame |
+|---|---|---|---|
+| CPU (default) | mean 56.3ms / p50 54.3ms / p95 78.2ms | mean 598.8ms / p50 606.3ms / p95 643.5ms | mean 655.7ms / p50 662.7ms / p95 722.5ms |
+| NNAPI | mean 46.3ms / p50 44.0ms / p95 59.3ms | mean 480.2ms / p50 441.5ms / p95 621.3ms | mean 527.2ms / p50 481.9ms / p95 720.1ms |
+
+**The cross-device ratio is consistent**: AuraFace is also ~1.8–2x faster
+on the S25 (598.8ms) than the Pixel 7 (1082.7–1186.2ms) — the same
+direction as the ArcFace cross-device ratio above.
+
+**The cross-model ratio differs by device.** On the Pixel 7, AuraFace was
+about 1.2–1.5x slower than ArcFace; on the S25, it's about 2.3x slower
+(598.8ms ÷ 256.6ms). Same pair of models, different relative gap per
+device — this looks like different chips handling a deeper compute
+structure (ResNet50 → ResNet100) with different relative efficiency,
+rather than anything indicating a bug.
+
+**NNAPI is clearly better here, this time.** Full-frame mean dropped from
+655.7ms to 527.2ms (19.6% faster), and p95 was slightly better too
+(722.5ms → 720.1ms) — unlike the pattern in the ArcFace section above
+("mean is a bit faster, but p95 variance makes it risky"). **But this is a
+single run (no repeat possible), and the Pixel 7 section already showed
+~9–10% run-to-run swings on embedding alone — one result isn't enough to
+treat as settled.** Whether NNAPI is genuinely better for S25 + AuraFace
+is left as an open question needing more measurements — not yet enough to
+justify switching the default from CPU to NNAPI.
+
+### Limitations (this section)
+
+- **Single run, no repeat possible** (not the tester's own device) — the
+  most important limitation here.
+- Only one SM-S931N unit measured.
+- `--release` build, a different build mode from the ArcFace (`--profile`)
+  numbers above.
