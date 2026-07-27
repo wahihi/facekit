@@ -118,7 +118,7 @@ AuraFace는 `redistributable: true`라 release 빌드에서도 로드가 막히�
 흔한 변동으로 보이며, 버그로 의심할 근거는 없다 — 다만 이 변동폭 자체가 "한 번만
 재고 확정값처럼 쓰면 안 된다"는 근거이기도 해서 범위로 남긴다.
 
-**ArcFace(R50) 대비 1.2~1.5배 느리다** — ArcFace buffalo_l은 ResNet50,
+**ArcFace(R50) 대비 전체 1프레임 기준 1.4~1.6배 느리다** — ArcFace buffalo_l은 ResNet50,
 AuraFace(glintr100)는 ResNet100 백본이라 연산량 자체가 원래 더 많다. fp16
 변환은 파일 크기(130MB)만 줄여줄 뿐, `TfliteRunner`가 XNNPACK/멀티스레드를
 켜지 않은 기본 CPU 레퍼런스 커널로 도는 한(위 ArcFace 섹션과 동일한 원인)
@@ -138,7 +138,6 @@ NNAPI가 더 나빴다(1차 1418.7 vs 1275.7ms, 2차 1432.6 vs 1391.5ms). ArcFac
 - Pixel 7 1대, 재설치 후 2회 측정 — 표본이 여전히 작다.
 - `--release` 빌드 기준이라 위 ArcFace(`--profile`) 수치와 빌드 모드가 다르다
   — 방법론이 완전히 같지 않으므로 배율은 참고치로만 볼 것.
-- Galaxy S25에서의 AuraFace 실측은 아직 없다.
 
 ## 실기기 (Galaxy S25 SM-S931N, 2026-06-30)
 

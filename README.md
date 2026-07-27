@@ -110,8 +110,9 @@ for the caveats). The ~9–10% spread between the two Pixel 7 runs
 (detection stayed stable) looks like ordinary device variance (thermal,
 background load, cold state after reinstall), not a bug. AuraFace
 (ResNet100) is slower than ArcFace buffalo_l (ResNet50) below, but by a
-device-dependent margin (~1.2–1.5x on Pixel 7, ~2.3x on Galaxy S25) —
-likely reflecting how efficiently each chip handles the deeper backbone.
+device-dependent margin (full-frame basis: ~1.5x on Pixel 7, ~2.2x on
+Galaxy S25) — likely reflecting how efficiently each chip handles the
+deeper backbone.
 
 **ArcFace buffalo_l (a BYOM example, non-default)** — `--profile` build
 (ArcFace's research-tier license blocks it from loading in `--release` at

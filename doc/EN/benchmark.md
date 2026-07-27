@@ -147,7 +147,7 @@ thermal effects, background processes) rather than anything indicating a
 bug — but that much swing is itself a reason to report a range instead of
 treating a single run as a fixed value.
 
-**About 1.2–1.5x slower than ArcFace (R50)** — ArcFace buffalo_l uses a
+**About 1.4–1.6x (full-frame basis) slower than ArcFace (R50)** — ArcFace buffalo_l uses a
 ResNet50 backbone, while AuraFace (glintr100) uses ResNet100, which is
 simply more compute. The fp16 conversion only shrinks the file size
 (130MB); as long as `TfliteRunner` runs on the plain CPU reference kernels
@@ -174,7 +174,6 @@ ArcFace's ~0.8s.
 - This is a `--release` build, a different build mode from the ArcFace
   numbers above (`--profile`) — since the methodology isn't identical,
   treat any ratio between them as a rough reference only.
-- No real-device AuraFace measurement on the Galaxy S25 yet.
 
 ## Real device (Galaxy S25 SM-S931N, 2026-06-30)
 
