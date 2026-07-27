@@ -238,9 +238,9 @@ n=30, excluding warmup, repeated on one fixed frame captured by the camera:
 on the S25 (598.8ms) than the Pixel 7 (1082.7–1186.2ms) — the same
 direction as the ArcFace cross-device ratio above.
 
-**The cross-model ratio differs by device.** On the Pixel 7, AuraFace was
-about 1.2–1.5x slower than ArcFace; on the S25, it's about 2.3x slower
-(598.8ms ÷ 256.6ms). Same pair of models, different relative gap per
+**The cross-model ratio differs by device.** On embedding alone, AuraFace
+was about 1.5–1.6x slower than ArcFace on the Pixel 7 (1082.7–1186.2ms ÷
+729.4ms); on the S25, it's about 2.3x slower (598.8ms ÷ 256.6ms). Same pair of models, different relative gap per
 device — this looks like different chips handling a deeper compute
 structure (ResNet50 → ResNet100) with different relative efficiency,
 rather than anything indicating a bug.
