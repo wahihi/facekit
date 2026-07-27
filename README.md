@@ -100,13 +100,18 @@ independent runs after a reinstall:
 |---|---|---|---|---|
 | Pixel 7 | CPU (default) | avg 51–52ms | avg 1083–1186ms | avg 1135–1238ms |
 | Pixel 7 | NNAPI | avg 50–61ms | avg 1106–1205ms | avg 1156–1267ms |
+| Galaxy S25 (SM-S931N) | CPU (default) | avg 56.3ms | avg 598.8ms | avg 655.7ms |
+| Galaxy S25 (SM-S931N) | NNAPI | avg 46.3ms | avg 480.2ms | avg 527.2ms |
 
-No Galaxy S25 numbers for AuraFace yet. The ~9–10% spread between the two
-runs (detection stayed stable) looks like ordinary device variance
-(thermal, background load, cold state after reinstall), not a bug — see
-the full doc for both runs in detail. AuraFace (ResNet100) is ~1.2–1.5x
-slower than ArcFace buffalo_l (ResNet50) below, which tracks with the
-deeper backbone.
+The Galaxy S25 row is a **single measurement** on a borrowed device (not
+the tester's own), with no re-test possible — treat the NNAPI-faster
+result as a reference point, not a confirmed conclusion (see the full doc
+for the caveats). The ~9–10% spread between the two Pixel 7 runs
+(detection stayed stable) looks like ordinary device variance (thermal,
+background load, cold state after reinstall), not a bug. AuraFace
+(ResNet100) is slower than ArcFace buffalo_l (ResNet50) below, but by a
+device-dependent margin (~1.2–1.5x on Pixel 7, ~2.3x on Galaxy S25) —
+likely reflecting how efficiently each chip handles the deeper backbone.
 
 **ArcFace buffalo_l (a BYOM example, non-default)** — `--profile` build
 (ArcFace's research-tier license blocks it from loading in `--release` at
