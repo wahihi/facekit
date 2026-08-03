@@ -263,16 +263,34 @@ class _RecognitionPageState extends State<RecognitionPage> {
   /// orientation regardless of device orientation. This app is portrait-only
   /// (no UI rotation handling), so — assuming the device is held upright —
   /// the fixed rotation needed is entirely determined by the active camera's
-  /// `sensorOrientation`, adjusted for lens facing (front cameras are
-  /// mounted mirrored relative to back cameras on essentially all Android
-  /// devices). This is the same formula ML Kit's official camera examples
-  /// use for portrait-locked apps.
+  /// `sensorOrientation`, adjusted for lens facing.
+  ///
+  /// The textbook ML Kit-style front-camera formula `(360 - sensorOrientation)
+  /// % 360` does NOT hold here: on a real Pixel 7 (front camera,
+  /// sensorOrientation=270) it produced a 90°-rotated crop (verified by
+  /// reconstructing raw landmark geometry from a device debug dump — eyes
+  /// came out separated vertically instead of horizontally, and un-rotating
+  /// by one more quarter turn fixed both the eye axis and the nose/mouth
+  /// up-down order). The +90° adjustment below is empirically calibrated to
+  /// that measurement, not re-derived from camera theory. The back-camera
+  /// branch is unchanged and untested — this app is only ever run with the
+  /// front camera in practice.
+  bool _quarterTurnsLogged = false;
+
   int _cameraQuarterTurns() {
     final sensorOrientation = _controller?.description.sensorOrientation ?? 0;
     final degrees = _lensDirection == CameraLensDirection.front
-        ? (360 - sensorOrientation) % 360
+        ? (450 - sensorOrientation) % 360
         : sensorOrientation % 360;
-    return degrees ~/ 90;
+    final turns = degrees ~/ 90;
+    if (!_quarterTurnsLogged) {
+      _quarterTurnsLogged = true;
+      debugPrint(
+        '[TEMP DEBUG] _cameraQuarterTurns: lensDirection=$_lensDirection '
+        'sensorOrientation=$sensorOrientation degrees=$degrees turns=$turns',
+      );
+    }
+    return turns;
   }
 
   /// Runs every camera frame, independent of enroll/identify state, so the

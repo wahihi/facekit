@@ -10,7 +10,7 @@
 
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import '../core/debug_flags.dart';
 import '../core/models.dart';
 import '../core/contracts.dart';
@@ -60,11 +60,21 @@ class AffineAligner implements FaceAligner {
 
   @override
   AlignedFace align(FaceImage image, DetectedFace face) {
-    // BlazeFace gives 6 keypoints: leftEye[0], rightEye[1], nose[2],
-    // mouth[3], leftEar[4], rightEar[5].
-    // We map the first 5 (skip ears) to the 5-point reference.
-    final src = _pickFivePoints(face.landmarks);
-    final dst = referencePoints;
+    // BlazeFace gives 6 keypoints, order rightEye[0], leftEye[1], nose[2],
+    // mouth[3], rightEar[4], leftEar[5] (see blazeface_decoder.dart) — note
+    // this is opposite the eye order this file used to assume. Confirmed by
+    // reconstructing real landmark geometry from a device debug dump: with
+    // the old (wrong) eye order the fitted rotation was 42-90° and unstable
+    // across frames; swapping the two eye indices below drops it to a
+    // consistent 13-24° (ordinary head tilt). Ears are dropped entirely —
+    // BlazeFace only gives a single mouth-centre point, not two corners, so
+    // there's no good BlazeFace point to pair with the 5th ArcFace reference
+    // point (right mouth corner); an ear midpoint is not a mouth corner and
+    // pulled the fit even further off. 4-point similarity (eyes+nose+mouth,
+    // matched against the ArcFace reference with its two mouth-corner points
+    // collapsed to their midpoint) avoids that bad correspondence.
+    final src = _pickFourPoints(face.landmarks);
+    final dst = _fourPointReference(referencePoints);
 
     final m = _umeyamaSimilarity(src, dst);
     if (kFacekitVerboseDebug) {
@@ -81,18 +91,50 @@ class AffineAligner implements FaceAligner {
     return AlignedFace(rgbBytes: rgb, size: outputSize);
   }
 
-  /// Pick 5 usable landmark points from the detector output.
-  /// BlazeFace order: leftEye, rightEye, noseTip, mouth, leftEar, rightEar.
-  static List<Point> _pickFivePoints(List<Point> lm) {
+  /// Pick 4 usable landmark points from the detector output.
+  /// BlazeFace order: rightEye[0], leftEye[1], noseTip[2], mouth[3],
+  /// rightEar[4], leftEar[5] (see blazeface_decoder.dart). Reordered here to
+  /// [leftEye, rightEye, nose, mouth] to match the ArcFace reference point
+  /// order; ears are dropped (see comment in [align]).
+  static List<Point> _pickFourPoints(List<Point> lm) {
     if (lm.length < 5) throw ArgumentError('Need ≥5 landmarks, got ${lm.length}');
-    // indices 0,1,2,3 and derive 5th as midpoint of ears if available,
-    // otherwise reuse mouth.
-    final fifth = lm.length >= 6
-        ? Point((lm[4].x + lm[5].x) / 2, (lm[4].y + lm[5].y) / 2)
-        : lm[3];
-    return [lm[0], lm[1], lm[2], lm[3], fifth];
+    return [lm[1], lm[0], lm[2], lm[3]];
+  }
+
+  /// Collapses a 5-point ArcFace-style reference (two mouth corners) into 4
+  /// points by averaging the mouth corners into a single mouth-centre point,
+  /// matching what BlazeFace's single mouth landmark can actually provide.
+  static List<Point> _fourPointReference(List<Point> ref5) {
+    assert(ref5.length == 5);
+    final mouthMid = Point(
+      (ref5[3].x + ref5[4].x) / 2,
+      (ref5[3].y + ref5[4].y) / 2,
+    );
+    return [ref5[0], ref5[1], ref5[2], mouthMid];
   }
 }
+
+/// Testing hook — lets tests exercise the private similarity solver in
+/// isolation, independent of BlazeFace landmark picking/reordering.
+@visibleForTesting
+List<double> umeyamaSimilarityForTest(List<Point> s, List<Point> d) =>
+    _umeyamaSimilarity(s, d);
+
+/// Testing hook — computes the same alignment matrix [AffineAligner.align]
+/// does (4-point pick + reference collapse + Umeyama fit), without needing a
+/// [FaceImage]/[DetectedFace] or running the pixel warp. [landmarks] is raw
+/// BlazeFace order (rightEye, leftEye, nose, mouth, [rightEar, leftEar]);
+/// [referencePoints5] is a 5-point ArcFace-style reference (e.g.
+/// [arcface112Ref]).
+@visibleForTesting
+List<double> alignmentMatrixForTest(
+  List<Point> landmarks,
+  List<Point> referencePoints5,
+) =>
+    _umeyamaSimilarity(
+      AffineAligner._pickFourPoints(landmarks),
+      AffineAligner._fourPointReference(referencePoints5),
+    );
 
 /// Estimates the optimal similarity matrix M (2×3) that maps [src] → [dst]
 /// using Umeyama's closed-form least-squares method.
@@ -123,6 +165,7 @@ List<double> _umeyamaSimilarity(List<Point> src, List<Point> dst) {
     cov10 += dy * sx; cov11 += dy * sy;
   }
   srcVar /= n;
+  cov00 /= n; cov01 /= n; cov10 /= n; cov11 /= n;
 
   // 2×2 SVD of covariance matrix via Jacobi (analytic for 2×2)
   final svd = _svd2x2(cov00, cov01, cov10, cov11);
@@ -183,7 +226,7 @@ List<double> _umeyamaSimilarity(List<Point> src, List<Point> dst) {
 
   // Vt = rot(-theta) transposed = rot(theta)
   final vCos = math.cos(theta), vSin = math.sin(theta);
-  final vt = [vCos, vSin, -vSin, vCos];
+  final vt = [vCos, -vSin, vSin, vCos];
 
   return (u, [s0, s1], vt);
 }
