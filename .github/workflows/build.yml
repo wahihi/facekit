@@ -47,6 +47,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/facekit-example-${{ github.ref_name }}.apk
+          # NOTE: this body is static — it's shown as-is on every future
+          # tagged release until someone edits it again. Update the
+          # "What's new" section before cutting the next tag.
           body: |
             Prebuilt release APK for facekit's example app (${{ github.ref_name }}).
 
@@ -56,3 +59,24 @@ jobs:
             [doc/EN/installation.md](https://github.com/wahihi/facekit/blob/main/doc/EN/installation.md)
             (also [in Korean](https://github.com/wahihi/facekit/blob/main/doc/KR/installation.md))
             for what it does and how to build it from source instead.
+
+            ## What's new in v0.1.1
+
+            Fixes four stacked bugs in `AffineAligner` (the 5-point face
+            alignment step run before every embedding) that produced a
+            mis-rotated, mis-scaled crop under real camera conditions:
+
+            - An SVD sign bug and a missing covariance normalization in the
+              Umeyama similarity-transform solver.
+            - A wrong camera-rotation quarter-turn for the front camera,
+              confirmed on a real Pixel 7.
+            - A reversed BlazeFace eye-index order, plus a forced (and
+              geometrically wrong) 5th landmark point.
+
+            Re-verified end-to-end on a real device: aligned crops are now
+            upright, recognizable faces, and a 46-attempt same-person
+            similarity re-measurement stayed at 0.776–0.979 (well above the
+            0.40 match threshold), with no benchmark regression. Full
+            write-up:
+            [doc/EN/postmortem/2026-08-03-affine-aligner-alignment.md](https://github.com/wahihi/facekit/blob/main/doc/EN/postmortem/2026-08-03-affine-aligner-alignment.md)
+            (also [in Korean](https://github.com/wahihi/facekit/blob/main/doc/KR/postmortem/2026-08-03-affine-aligner-alignment.md)).
