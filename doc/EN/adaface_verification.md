@@ -117,3 +117,55 @@ the unfilled second output slot. A `zeroTensor()` helper was added to
 `lib/src/embedding/face_embedder.dart` was changed to use only output 0
 (the embedding) and fill the remaining outputs with a discarded buffer.
 Unit test: `test/inference/tflite_runner_test.dart`.
+
+## AuraFace EER measurement (added 2026-08-09)
+
+AuraFace (glintr100), the default bundled embedding model, had until now
+only ever had genuine-pair similarity checked (see the 2026-07-24 and
+2026-08-03 postmortems) — impostor pairs had never been measured, and
+`matching.threshold` was an unvalidated placeholder (0.40). A real-device
+session reproduced a concrete failure: showing the camera an unrelated
+person's photo scored almost the same similarity (both ~0.9) as the
+enrolled user. Tracing the cause led to a wrong value in `manifest.json`'s
+`input.normalize` — pixels were being fed in with no normalization at all,
+instead of being normalized. Loading the same `glintr100.onnx` through the
+*official* `insightface` Python package
+(`tool/model_verification/verify_auraface_official.py`) showed that
+`ArcFaceONNX`'s own graph-inspection logic auto-selects
+`input_mean=127.5, input_std=127.5` (the standard ArcFace convention) for
+this model — not raw pixels. The wrong raw-pixel value was likely first
+adopted because, at the time it was chosen (2026-07-24), the alignment
+pipeline still had unfixed bugs (reversed eye-left/right indices, an SVD
+sign bug, etc. — all fixed only on 2026-08-03), so the crops being compared
+were themselves mis-rotated; feeding those bad crops through *correct*
+normalization produced low similarity, which got misdiagnosed as a
+normalization problem. Nobody re-validated the normalization choice after
+the alignment bugs were actually fixed a month later, so the wrong raw-pixel
+value silently persisted.
+
+After correcting `input.normalize` to the standard values (mean/std 127.5),
+the model was re-measured with the same methodology already used for
+ArcFace/AdaFace (`compare_arcface_adaface.py --auraface-tflite`, the same
+200 LFW pairs, seed=42, resize-only preprocessing with no 5-point
+alignment):
+
+| Model | Condition | Genuine mean | Impostor mean | EER | EER threshold | Accuracy at that threshold |
+|---|---|---|---|---|---|---|
+| AuraFace | clean | 0.4803 | 0.1952 | 10.0% | 0.300 | 90.0% |
+| AuraFace | degraded | 0.3560 | 0.2402 | 28.0% | 0.274 | (68.5% if the clean threshold is reused) |
+
+This is roughly on par with ArcFace (8.5% EER) and clearly behind AdaFace
+(2.0% EER) — AuraFace turned out to have the weakest discriminative power of
+the three. An earlier quick, ad-hoc test (2 photos of one person + 1 of
+someone else, via `verify_auraface_official.py`) had shown a dramatic split
+(genuine 0.77 vs impostor ≈0.03), but that was a 3-sample fluke; the 200-pair
+statistic here is the number worth trusting. `matching.threshold` was
+updated from 0.40 (an unvalidated placeholder) to 0.30 (the measured EER
+point).
+
+**Lesson**: not just thresholds — any setting that looks like it "only has
+one correct value" (like `input.normalize`) can get stuck wrong if a
+different bug (here, alignment) was tangled up with it at the moment the
+value was first chosen. Re-validating a value later means also
+re-questioning whatever assumption was true (or wasn't) back when it was
+set — here, "the crop is actually upright."

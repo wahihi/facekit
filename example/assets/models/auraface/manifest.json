@@ -7,15 +7,15 @@
     "height": 112,
     "color": "RGB",
     "layout": "NHWC",
-    "normalize": { "mean": [0.0, 0.0, 0.0], "std": [1.0, 1.0, 1.0] },
-    "note": "실기기 캡처로 검증 완료 — RGB, 정규화 없이 원본 0~255 픽셀을 그대로 입력해야 함(표준 ArcFace의 (pixel-127.5)/127.5 컨벤션이 아님). auraface_sim_float16.tflite에 실제 정렬 크롭 2장(같은 사람)을 넣어 자기-유사도를 비교: mean=127.5 정규화 시 0.15~0.20, 정규화 없이(raw) RGB 시 0.9325, BGR 시 0.9280 — RGB+raw가 최고값. 방법론: auraface_conv/ 아래 검증 스크립트 참고."
+    "normalize": { "mean": [127.5, 127.5, 127.5], "std": [127.5, 127.5, 127.5] },
+    "note": "2026-08-09 정정: 이전 raw(무정규화) 값은 잘못된 결론이었음 — 당시(7/24) 정렬 파이프라인에 아직 안 고쳐진 버그(눈 좌우 순서 반전, SVD 부호 오류, 공분산 정규화 누락, 카메라 회전 공식 오류, 전부 8/3에야 수정됨)가 있어서 입력 크롭 자체가 42~90도가량 잘못 회전돼 있었고, 그 잘못된 크롭을 표준 정규화로 넣었더니 자기-유사도가 낮게 나온 것을 정규화 문제로 오진단했음. 정렬 버그를 다 고친 뒤 공식 insightface 파이썬 패키지(glintr100.onnx, tool/model_verification/verify_auraface_official.py)로 재검증한 결과, insightface 자체의 ArcFaceONNX 로더가 이 그래프에 대해 input_mean=127.5/input_std=127.5(표준 ArcFace 컨벤션)를 자동으로 채택하는 것을 확인 — RGB, (pixel-127.5)/127.5가 올바른 전처리."
   },
   "output": { "dim": 512, "l2_normalize": true },
   "alignment": { "type": "five_point_affine", "reference": "arcface_112" },
   "matching": {
     "metric": "cosine",
-    "threshold": 0.40,
-    "threshold_note": "AuraFace 임시값. 실기기 ROC로 재튜닝 필요."
+    "threshold": 0.30,
+    "threshold_note": "LFW(logasja/lfw) 200쌍(동일인 100 + 타인 100), 250x250 funneled crop을 112x112로 리사이즈만 하고(5점 랜드마크 정렬 미적용) 측정한 EER 지점. EER=10.0%, 해당 임계값에서 clean 정확도 90.0%. 저화질(24px 다운/업샘플) 조건에서는 EER이 28%로 악화되고 clean 임계값 적용 시 정확도 68.5%로 하락함 — ArcFace(EER 8.5%)와 비슷한 수준이고 AdaFace(EER 2.0%)보다는 낮음. 2026-08-09 이전에는 input.normalize가 잘못된 값(무정규화 raw pixel)이라 타인도 본인과 구분 못 하는 상태였음(실기기 오탐 확인, doc/KR/postmortem/ 참고) — 표준 (pixel-127.5)/127.5로 수정한 뒤 재측정한 값. 소규모 측정치이며 정식 ROC 검증 대체 아님. 방법론/원자료: doc/KR/adaface_verification.md, tool/model_verification/."
   },
   "license": {
     "tier": "bundled",

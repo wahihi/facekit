@@ -92,3 +92,40 @@ AdaFace처럼 출력이 2개(`feature`, `norm`)인 모델을 실제로 로드하
 `lib/src/embedding/face_embedder.dart`의 `embed()`가 출력 0번(임베딩)만 사용하고 나머지
 출력엔 빈 버퍼를 채워 무시하도록 고쳤다. 단위 테스트:
 `test/inference/tflite_runner_test.dart`.
+
+## AuraFace EER 측정 (2026-08-09 추가)
+
+기본 임베딩 모델인 AuraFace(glintr100)는 그동안 동일인 쌍 유사도만 확인됐고(7/24, 8/3
+포스트모템 참고) 타인 쌍은 측정된 적이 없었다 — `matching.threshold`도 실측 없는
+placeholder(0.40)였다. 실기기에서 등록한 사람과 무관한 사람의 사진을 비췄을 때 거의
+같은 유사도(둘 다 0.9대)가 나오는 문제가 실제로 재현됐고, 원인을 추적한 결과
+`manifest.json`의 `input.normalize`가 잘못된 값(정규화 없이 원본 0~255 픽셀 그대로)으로
+설정돼 있었던 것으로 드러났다. 공식 `insightface` 파이썬 패키지로 같은 `glintr100.onnx`를
+로드해보면(`tool/model_verification/verify_auraface_official.py`), `ArcFaceONNX`가 그래프를
+보고 자동으로 판별하는 정규화 값은 `input_mean=127.5, input_std=127.5`(표준 ArcFace
+컨벤션)였다 — raw pixel이 아니었다. 잘못된 raw 값이 처음 채택된 건 그 값을 정한 시점
+(7/24)에 정렬 파이프라인에 아직 안 고쳐진 버그(눈 좌우 순서 반전, SVD 부호 오류 등,
+8/3에야 수정)가 있어서 입력 크롭 자체가 잘못 회전돼 있었기 때문으로 보인다 — 그 잘못된
+크롭에 표준 정규화를 걸었더니 낮은 유사도가 나온 것을 정규화 문제로 오진단했고, 8/3에
+정렬 버그를 고친 뒤에도 아무도 정규화 설정을 재검증하지 않아 raw 값이 그대로 남아있었다.
+
+`input.normalize`를 표준값(`mean`/`std` 127.5)으로 고친 뒤, ArcFace/AdaFace와 동일한
+방법론(`compare_arcface_adaface.py --auraface-tflite`, 같은 LFW 200쌍, seed=42, 5점
+정렬 미적용 리사이즈만)으로 재측정했다:
+
+| 모델 | 조건 | genuine 평균 | impostor 평균 | EER | EER 임계값 | 해당 임계값 정확도 |
+|---|---|---|---|---|---|---|
+| AuraFace | clean | 0.4803 | 0.1952 | 10.0% | 0.300 | 90.0% |
+| AuraFace | degraded | 0.3560 | 0.2402 | 28.0% | 0.274 | (clean 임계값 적용 시 68.5%) |
+
+ArcFace(EER 8.5%)와 비슷한 수준이고 AdaFace(EER 2.0%)보다는 뚜렷이 낮다 — AuraFace가
+셋 중 가장 약한 판별력을 보였다. 실기기 즉석 테스트(본인 사진 2장 + 타인 사진 1장,
+`verify_auraface_official.py`)에서는 genuine 0.77 vs impostor ≈0.03으로 극적으로
+갈렸었는데, 그건 표본 3장짜리 우연한 결과였고 200쌍 통계가 훨씬 신뢰할 수 있는
+수치다. `matching.threshold`를 0.40(무근거 placeholder)에서 0.30(EER 기준
+실측값)으로 갱신했다.
+
+**교훈**: threshold뿐 아니라 `input.normalize` 같은 "정답이 하나뿐인 것처럼 보이는"
+설정값도, 그 값을 처음 정했을 때 다른 버그(이번엔 정렬)가 같이 섞여 있었다면 틀린
+채로 굳어질 수 있다. 값 하나를 재검증할 땐 그 값이 결정된 시점에 다른 전제(여기선
+"크롭이 똑바로 정렬돼 있다")가 참이었는지도 같이 의심해야 한다.

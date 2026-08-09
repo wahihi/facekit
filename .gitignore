@@ -36,6 +36,24 @@ migrate_working_dir/
 !assets/models/blazeface_short/*.tflite
 !assets/models/face_landmark_478/*.tflite
 
+# tool/model_verification/ local run artifacts — the scripts there download/
+# fetch these into place themselves (see the folder's README), and some are
+# personal photos or third-party datasets that must never be committed.
+# results_*.json (the actual measurement output) is intentionally NOT
+# covered here — those are the checked-in evidence behind manifest
+# threshold values, see e.g. results_2026-06-25.json.
+tool/model_verification/models/
+tool/model_verification/*.onnx
+tool/model_verification/*.jpg
+tool/model_verification/*.jpeg
+tool/model_verification/*.png
+tool/model_verification/*.parquet
+
+# flutter run --dart-define=FACEKIT_VERBOSE_DEBUG=true device logs saved for
+# local analysis (tool/analyze_alignment_log.py) — contains base64 face crop
+# dumps, never meant to be committed.
+example/test/log.test
+
 # Flutter/Dart/Pub related
 # Libraries should not include pubspec.lock, per https://dart.dev/guides/libraries/private-files#pubspeclock.
 /pubspec.lock

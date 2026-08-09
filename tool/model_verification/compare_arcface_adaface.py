@@ -1,17 +1,32 @@
 """Genuine/impostor cosine-similarity comparison between the real ArcFace
-(buffalo_l/w600k_r50) and AdaFace (IR-101/WebFace12M) weights, on a clean
-and a simulated-low-quality condition. Produces the numbers behind the
-`matching.threshold` / `threshold_note` fields in both models' manifest.json
-and the writeup in doc/KR/adaface_verification.md.
+(buffalo_l/w600k_r50), AdaFace (IR-101/WebFace12M), and AuraFace
+(glintr100) weights, on a clean and a simulated-low-quality condition.
+Produces the numbers behind the `matching.threshold` / `threshold_note`
+fields in each model's manifest.json and the writeup in
+doc/KR/adaface_verification.md.
+
+AuraFace support was added 2026-08-09 after a real-device facekit session
+showed AuraFace failing to tell two different people apart — traced to a
+wrong `manifest.json` normalization (raw 0-255 pixels instead of the
+standard (pixel-127.5)/127.5 ArcFace convention; see
+doc/KR/postmortem/2026-07-24-auraface-alignment.md for how that wrong value
+got there, and tool/model_verification/verify_auraface_official.py for the
+official-insightface-package cross-check that caught it). This script gives
+that fix a real EER-based threshold instead of the placeholder 0.40, using
+the same LFW methodology already used for ArcFace/AdaFace.
 
 This is a one-off developer tool, not part of the shipped SDK: per the
-BYOM policy in CLAUDE.md, neither model's weights are bundled in this repo.
+BYOM policy in CLAUDE.md, none of these models' weights are bundled in this
+repo (AuraFace *is* bundled in the actual app via tool/fetch_models.sh, but
+that's a separate copy from whatever you point --auraface-tflite at here).
 You must supply your own locally-converted copies (see each manifest's
 license.note for where to source them).
 
-Usage:
+Usage (pass any subset of --arcface-tflite / --adaface-onnx|--adaface-tflite
+/ --auraface-tflite — at least one required):
     pip install tensorflow onnxruntime pandas pyarrow pillow scikit-learn numpy
     python compare_arcface_adaface.py \
+        --auraface-tflite /path/to/auraface_r100_fp16.tflite \
         --arcface-tflite /path/to/w600k_r50.tflite \
         --adaface-onnx /path/to/adaface_ir101_webface12m.onnx \
         --pairs-parquet /path/to/lfw_pairs_test.parquet
@@ -105,6 +120,29 @@ class AdafaceTflite:
         return self.interp.get_tensor(self.out_idx)[0]
 
 
+class AurafaceTflite:
+    """Real AuraFace-v1 (glintr100) weights via the .tflite the example app
+    bundles (tool/fetch_models.sh). Same preprocessing as ArcfaceTflite —
+    confirmed against the official insightface package's own auto-detected
+    input_mean/input_std for this exact graph (127.5/127.5, standard ArcFace
+    convention), NOT the raw-pixel value the manifest wrongly had before
+    2026-08-09 (see module docstring)."""
+
+    def __init__(self, path):
+        self.interp = tf.lite.Interpreter(model_path=path)
+        self.interp.allocate_tensors()
+        self.in_idx = self.interp.get_input_details()[0]["index"]
+        self.out_idx = self.interp.get_output_details()[0]["index"]
+
+    def embed(self, rgb_112):
+        # manifest (as of 2026-08-09): color=RGB, mean/std=127.5 -> (x-127.5)/127.5
+        x = (rgb_112.astype(np.float32) - 127.5) / 127.5
+        x = x[np.newaxis, :, :, :]  # NHWC
+        self.interp.set_tensor(self.in_idx, x)
+        self.interp.invoke()
+        return self.interp.get_tensor(self.out_idx)[0]
+
+
 def cosine(a, b):
     a = a / (np.linalg.norm(a) + 1e-12)
     b = b / (np.linalg.norm(b) + 1e-12)
@@ -135,31 +173,40 @@ def accuracy_at(genuine_scores, impostor_scores, threshold):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--arcface-tflite", required=True)
+    p.add_argument("--arcface-tflite")
     p.add_argument("--adaface-onnx")
     p.add_argument("--adaface-tflite")
+    p.add_argument("--auraface-tflite")
     p.add_argument("--pairs-parquet", required=True)
     p.add_argument("--n-per-class", type=int, default=N_PER_CLASS)
     p.add_argument("--out", default="results.json")
     args = p.parse_args()
-    if not args.adaface_onnx and not args.adaface_tflite:
-        p.error("one of --adaface-onnx or --adaface-tflite is required")
+    if args.adaface_onnx and args.adaface_tflite:
+        p.error("pass only one of --adaface-onnx or --adaface-tflite")
+
+    models = []
+    if args.arcface_tflite:
+        log("loading ArcFace tflite...")
+        models.append(("arcface", ArcfaceTflite(args.arcface_tflite)))
+    if args.adaface_onnx or args.adaface_tflite:
+        log("loading AdaFace...")
+        models.append(("adaface", AdafaceTflite(args.adaface_tflite) if args.adaface_tflite else AdafaceOnnx(args.adaface_onnx)))
+    if args.auraface_tflite:
+        log("loading AuraFace tflite...")
+        models.append(("auraface", AurafaceTflite(args.auraface_tflite)))
+    if not models:
+        p.error("pass at least one of --arcface-tflite / --adaface-onnx / --adaface-tflite / --auraface-tflite")
 
     df = pd.read_parquet(args.pairs_parquet)
     genuine = df[df["pair"] == 1].sample(n=args.n_per_class, random_state=SEED).reset_index(drop=True)
     impostor = df[df["pair"] == 0].sample(n=args.n_per_class, random_state=SEED).reset_index(drop=True)
     pairs_df = pd.concat([genuine.assign(label=1), impostor.assign(label=0)]).reset_index(drop=True)
 
-    log("loading ArcFace tflite...")
-    arcface = ArcfaceTflite(args.arcface_tflite)
-    log("ArcFace ready")
-    adaface = AdafaceTflite(args.adaface_tflite) if args.adaface_tflite else AdafaceOnnx(args.adaface_onnx)
-
     def load112(cell):
         return Image.open(io.BytesIO(cell["bytes"])).convert("RGB").resize((112, 112), Image.BILINEAR)
 
     results = {}
-    for model_name, model in [("arcface", arcface), ("adaface", adaface)]:
+    for model_name, model in models:
         for condition in ["clean", "degraded"]:
             t0 = time.time()
             gscores, iscores = [], []
@@ -178,7 +225,7 @@ def main():
                 f"impostor mean={np.mean(iscores):.4f} n={len(gscores)}/{len(iscores)} ({time.time() - t0:.1f}s total)")
 
     summary = {}
-    for model_name in ["arcface", "adaface"]:
+    for model_name, _ in models:
         gscores_clean, iscores_clean = results[(model_name, "clean")]
         thr, fpr, fnr = eer_threshold(gscores_clean, iscores_clean)
         gscores_deg, iscores_deg = results[(model_name, "degraded")]

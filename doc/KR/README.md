@@ -118,10 +118,9 @@ Galaxy S25(Snapdragon 8 Elite)에서는 ArcFace 기준 NNAPI가 평균은 ~15ms 
 유지가 안전합니다. 위 두 표는 빌드 모드 자체가 다르니(이유는 각 문서 참고),
 둘 사이 배율은 엄밀한 비교가 아니라 참고치로만 보세요.
 
-정확도(LFW 200쌍 기준 EER)는 ArcFace 8.5% / AdaFace 2.0%이며, 저화질 조건에서는
-AdaFace가 더 강건합니다(자세한 수치는 [doc/KR/adaface_verification.md](adaface_verification.md)).
-AuraFace는 아직 EER 측정이 없습니다(지금까지는 동일인 쌍 유사도만 확인 — 남겨둔
-임계값 재튜닝 이슈 참고).
+정확도(LFW 200쌍 기준 EER)는 ArcFace 8.5% / AdaFace 2.0% / AuraFace 10.0%이며,
+저화질 조건에서는 AdaFace가 가장 강건합니다(자세한 수치와 AuraFace의
+`input.normalize` 버그 경위는 [doc/KR/adaface_verification.md](adaface_verification.md) 참고).
 
 ## 라이브니스 / Free·Pro 경계
 

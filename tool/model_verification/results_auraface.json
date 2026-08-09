@@ -1,0 +1,10 @@
+{
+  "auraface": {
+    "threshold_clean_eer": 0.29989001154899597,
+    "eer_clean": 0.09999999999999999,
+    "accuracy_clean_at_threshold": 0.9,
+    "accuracy_degraded_at_clean_threshold": 0.685,
+    "threshold_degraded_eer": 0.2744795083999634,
+    "eer_degraded": 0.28
+  }
+}
