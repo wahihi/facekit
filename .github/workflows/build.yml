@@ -60,23 +60,40 @@ jobs:
             (also [in Korean](https://github.com/wahihi/facekit/blob/main/doc/KR/installation.md))
             for what it does and how to build it from source instead.
 
-            ## What's new in v0.1.1
+            ## What's new in v0.1.2
 
-            Fixes four stacked bugs in `AffineAligner` (the 5-point face
-            alignment step run before every embedding) that produced a
-            mis-rotated, mis-scaled crop under real camera conditions:
+            Fixes AuraFace being unable to tell two different people apart:
+            an enrolled user and an unrelated person's photo were scoring
+            almost the same similarity (~0.9 both).
 
-            - An SVD sign bug and a missing covariance normalization in the
-              Umeyama similarity-transform solver.
-            - A wrong camera-rotation quarter-turn for the front camera,
-              confirmed on a real Pixel 7.
-            - A reversed BlazeFace eye-index order, plus a forced (and
-              geometrically wrong) 5th landmark point.
+            - The cause was `example/assets/models/auraface/manifest.json`'s
+              `input.normalize`, which fed raw 0–255 pixels in instead of
+              the standard ArcFace `(pixel-127.5)/127.5` normalization the
+              official `insightface` package's own loader auto-selects for
+              this exact model graph.
+            - Re-measured genuine/impostor separation on 200 real LFW pairs
+              (same methodology as ArcFace/AdaFace): EER 10.0%, and
+              `matching.threshold` updated from an unvalidated 0.40
+              placeholder to the measured 0.30.
 
-            Re-verified end-to-end on a real device: aligned crops are now
-            upright, recognizable faces, and a 46-attempt same-person
-            similarity re-measurement stayed at 0.776–0.979 (well above the
-            0.40 match threshold), with no benchmark regression. Full
+            Re-verified on a real device: clean crops of an unrelated
+            person's face now score 0.06–0.09 (clearly rejected), while the
+            enrolled user's own face clears the new threshold. Full
             write-up:
+            [doc/EN/postmortem/2026-08-09-auraface-normalization.md](https://github.com/wahihi/facekit/blob/main/doc/EN/postmortem/2026-08-09-auraface-normalization.md)
+            (also [in Korean](https://github.com/wahihi/facekit/blob/main/doc/KR/postmortem/2026-08-09-auraface-normalization.md)).
+
+            <details>
+            <summary>v0.1.1 — AffineAligner fixes</summary>
+
+            Fixed four stacked bugs in `AffineAligner` (the 5-point face
+            alignment step run before every embedding) that produced a
+            mis-rotated, mis-scaled crop under real camera conditions: an
+            SVD sign bug and a missing covariance normalization in the
+            Umeyama solver, a wrong camera-rotation quarter-turn for the
+            front camera, and a reversed BlazeFace eye-index order plus a
+            forced, geometrically wrong 5th landmark point. Full write-up:
             [doc/EN/postmortem/2026-08-03-affine-aligner-alignment.md](https://github.com/wahihi/facekit/blob/main/doc/EN/postmortem/2026-08-03-affine-aligner-alignment.md)
             (also [in Korean](https://github.com/wahihi/facekit/blob/main/doc/KR/postmortem/2026-08-03-affine-aligner-alignment.md)).
+
+            </details>
