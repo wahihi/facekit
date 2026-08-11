@@ -134,11 +134,10 @@ across the board. Build modes differ between the two tables above (see
 each doc section for why), so treat the ratio between them as a rough
 reference rather than a controlled comparison.
 
-Accuracy (EER on 200 LFW pairs) is 8.5% for ArcFace and 2.0% for AdaFace,
-with AdaFace staying more robust under low-resolution conditions (full
-numbers in [doc/EN/adaface_verification.md](doc/EN/adaface_verification.md)).
-AuraFace doesn't have an EER measurement yet (genuine-pair similarity only
-so far — see the open threshold-tuning issue).
+Accuracy (EER on 200 LFW pairs) is 8.5% for ArcFace / 2.0% for AdaFace /
+10.0% for AuraFace, with AdaFace staying more robust under low-resolution
+conditions (full numbers and the AuraFace `input.normalize` bug this
+uncovered in [doc/EN/adaface_verification.md](doc/EN/adaface_verification.md)).
 
 ## Liveness / Free vs. Pro boundary
 
