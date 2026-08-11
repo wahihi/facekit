@@ -169,3 +169,50 @@ different bug (here, alignment) was tangled up with it at the moment the
 value was first chosen. Re-validating a value later means also
 re-questioning whatever assumption was true (or wasn't) back when it was
 set — here, "the crop is actually upright."
+
+## Re-measuring with alignment, and a real-device-based threshold (added 2026-08-11)
+
+The AuraFace EER (10.0%) above used the same methodology as ArcFace/AdaFace
+— **only resizing** each 250x250 LFW funneled crop to 112x112, with no
+5-point alignment applied (every `threshold_note` says so explicitly).
+facekit's real pipeline does run detection + 5-point alignment, so this
+checked whether applying alignment changes the numbers.
+
+Rather than porting facekit's own BlazeFace decoder + Umeyama solver to
+Python (deferred as a separate, larger task), this reused the official
+`insightface` package's SCRFD detector + `face_align.norm_crop()`
+(`tool/model_verification/compare_with_alignment.py`). `norm_crop`'s
+reference points (`arcface_dst`) are identical to facekit's own
+`arcface112Ref` down to the decimal, so this measures "the same target
+geometry, via a different but standard detector+solver."
+
+| Model | Condition | Genuine mean | Impostor mean | EER | EER threshold | Accuracy at that threshold |
+|---|---|---|---|---|---|---|
+| ArcFace | clean (aligned) | 0.6550 | 0.0108 | 3.0% | 0.156 | 97.0% |
+| ArcFace | degraded (aligned) | 0.5234 | 0.0186 | 5.0% | 0.127 | (96.0% if the clean threshold is reused) |
+| AuraFace | clean (aligned) | 0.5926 | 0.0577 | 6.5% | 0.137 | 93.5% |
+| AuraFace | degraded (aligned) | 0.4205 | 0.1009 | 8.0% | 0.215 | (82.0% if the clean threshold is reused) |
+
+Both models improved substantially over the unaligned numbers (ArcFace
+clean EER 8.5%→3.0%, degraded 25%→5%; AuraFace clean 10.0%→6.5%, degraded
+28%→8%) — confirming the "Limitations" section's prediction above that
+unaligned numbers are pessimistic relative to the real pipeline. But
+**the relative ranking didn't change** — AuraFace is still weaker than
+ArcFace even with alignment applied (roughly 2.2x worse at clean EER).
+Skipping alignment wasn't uniquely unfair to AuraFace; it affected both
+models roughly proportionally.
+
+**`matching.threshold` was not switched straight to this EER point
+(0.137).** SCRFD appears to produce more stable landmarks than the
+BlazeFace-short detector facekit actually uses on-device — BlazeFace is
+already known to be unstable enough that 28-42% of real-device frames get
+flagged for anomalous rotation
+(`doc/EN/postmortem/2026-08-03-affine-aligner-alignment.md`). So 0.137 may
+be an optimistic lower bound relative to facekit's real operating
+conditions. Instead, the update was grounded in **values actually observed
+on a real device**: after the `input.normalize` fix, 3 of 11 real-device
+genuine-similarity readings (0.285/0.288/0.291) were rejected just under
+the old threshold (0.30), while 4 impostor (photo) readings in the same
+session ranged 0.060-0.094. `matching.threshold` was lowered **0.30 →
+0.25** to pass all three of those genuine readings while keeping a 0.156
+margin above the highest impostor value actually observed on-device.

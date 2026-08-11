@@ -84,3 +84,45 @@ pairwise cosine similarity plus a genuine/impostor separation verdict: if
 the official pipeline *also* can't separate the two identities, that
 points at the checkpoint itself rather than a facekit bug — see
 `doc/KR/postmortem/` for the investigation this follows on from.
+
+## compare_with_alignment.py
+
+`compare_arcface_adaface.py`'s LFW measurement only resizes each 250x250
+funneled crop to 112x112 — every manifest's `threshold_note` says so
+explicitly ("5점 랜드마크 정렬 미적용"). This script re-runs the same
+genuine/impostor comparison with real face detection + 5-point alignment
+applied first, to check how much of the measured accuracy gap (AuraFace's
+10.0% EER vs. ArcFace's 8.5% and AdaFace's 2.0%) is actually attributable
+to skipping alignment rather than the embedding models themselves.
+
+It doesn't port facekit's own BlazeFace decoder + Umeyama solver
+(`lib/src/detection/blazeface_*.dart`, `lib/src/alignment/affine_aligner.dart`)
+to Python line-for-line — instead it reuses the official `insightface`
+package's SCRFD detector + `face_align.norm_crop()` (same mechanism as
+`verify_auraface_official.py`). Its reference points are byte-identical to
+facekit's own `arcface112Ref`, so this measures "the same target geometry,
+via a different but standard detector+solver" — a good proxy for "does
+alignment help", not a substitute for facekit's exact code path if a
+number that has to withstand scrutiny (e.g. a paper or product spec) is
+needed later.
+
+Shares `compare_arcface_adaface.py`'s embedder classes directly (imports
+them), so the *only* variable that changes between the two scripts'
+results is resize-only vs. detect+align preprocessing.
+
+```
+pip install insightface onnxruntime opencv-python-headless huggingface_hub \
+  tensorflow pandas pyarrow pillow scikit-learn numpy
+python compare_with_alignment.py \
+  --auraface-tflite ../../example/assets/models/auraface/auraface_r100_fp16.tflite \
+  --arcface-tflite /path/to/w600k_r50.tflite \
+  --adaface-onnx /path/to/adaface_ir101_webface12m.onnx \
+  --pairs-parquet lfw_pairs_test.parquet \
+  --out results_with_alignment.json
+```
+
+Each image is detected+aligned exactly once and the result reused across
+all requested models (not re-detected per model). If SCRFD finds no face
+in a given LFW crop it falls back to a plain resize for that one image
+(logged as a count) rather than dropping the pair — LFW funneled crops are
+mostly clean frontal faces so this should be rare.
