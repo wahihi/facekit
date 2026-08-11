@@ -103,6 +103,10 @@ class FacePipeline {
     _log('detect: best score=${best.score.toStringAsFixed(3)}');
     _debugLogLandmarks('identify', image, best);
     final aligned = aligner.align(image, best);
+    if (aligned == null) {
+      _log('align: pose gate rejected this frame (bad rotation/scale)');
+      return null;
+    }
     _log('align: ${aligned.size}x${aligned.size} patch ready');
     _debugDumpAlignedFace('identify', aligned);
     final embedding = await _embedInIsolate(aligned);
@@ -124,6 +128,10 @@ class FacePipeline {
     _log('detect: best score=${best.score.toStringAsFixed(3)}');
     _debugLogLandmarks('enroll', image, best);
     final aligned = aligner.align(image, best);
+    if (aligned == null) {
+      _log('align: pose gate rejected this frame (bad rotation/scale)');
+      return null;
+    }
     _log('align: ${aligned.size}x${aligned.size} patch ready');
     _debugDumpAlignedFace('enroll', aligned);
     final embedding = await _embedInIsolate(aligned);
@@ -172,6 +180,7 @@ class SyncFacePipeline {
 
     final best = faces.reduce((a, b) => a.score >= b.score ? a : b);
     final aligned = aligner.align(image, best);
+    if (aligned == null) return null;
     final embedding = await embedder.embed(aligned);
     return matcher.match(embedding, gallery);
   }
@@ -182,6 +191,7 @@ class SyncFacePipeline {
 
     final best = faces.reduce((a, b) => a.score >= b.score ? a : b);
     final aligned = aligner.align(image, best);
+    if (aligned == null) return null;
     return embedder.embed(aligned);
   }
 }
