@@ -10,8 +10,12 @@ abstract class FaceDetector {
 }
 
 abstract class FaceAligner {
-  /// Crops and aligns [face] from [image] into a square patch.
-  AlignedFace align(FaceImage image, DetectedFace face);
+  /// Crops and aligns [face] from [image] into a square patch, or returns
+  /// null if the fitted transform's rotation/scale falls outside a sane
+  /// range for a hand-held selfie — a pose-quality gate rejecting frames
+  /// the detector landmarked badly rather than aligning them into a mostly-
+  /// background crop. See implementations for their exact bounds.
+  AlignedFace? align(FaceImage image, DetectedFace face);
 }
 
 abstract class FaceEmbedder {
