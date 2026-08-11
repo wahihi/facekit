@@ -257,3 +257,40 @@ Since the pose gate addresses the root cause (alignment instability)
 directly, `matching.threshold` was **fixed back at 0.30 (the LFW-200-pair
 EER value)** — real-device-observation-driven threshold tuning stops here.
 Re-validating the pose gate itself on a real device is left as a follow-up.
+
+## Real-device pose-gate validation, and a backlighting discovery (2026-08-11, continued)
+
+With the pose gate on, a real-device round (self vs. Mike Tyson,
+`FACEKIT_VERBOSE_DEBUG=true`) gave:
+
+```
+107 align attempts:  48 passed (45%) / 59 rejected (55%)
+Rejection cause: all 59 were rotation violations (0 scale violations), rotation 45.5-153.4 deg
+Of the passed frames — self: 6/6 accepted (0.318-0.430); Mike Tyson: 40/40 rejected (0.078-0.270)
+Gap = 0.048 (up from 0.022 measured without the gate)
+```
+
+The gate worked exactly as designed (only rotation violations, zero false
+scale triggers) — but **55% of alignment attempts being thrown away**
+means, in practice, "no face" showing on screen while a face is clearly
+visible more than half the time, which was a real concern.
+
+**Chasing the cause turned up an environmental variable: backlighting.**
+During this test the light source was behind the subject's head; the
+camera's auto-exposure balanced for the bright background, leaving the
+face relatively underexposed (near-silhouette), which likely degraded
+landmark precision and widened the rotation error. Physically blocking the
+light source with the head (normalizing face exposure) produced a clearly
+better felt recognition rate on the same device (not yet logged
+quantitatively). In other words, a meaningful part of what's been treated
+as "BlazeFace's landmarks are just inherently unstable" may actually be
+explained by capture conditions (backlighting) rather than a pure
+algorithmic limit — the 55% rejection rate above may be a worst-case number
+specific to backlit conditions.
+
+**Conclusion**: the pose gate is adopted (it correctly filters rotation
+false-positives, and the genuine/impostor gap on the frames that pass did
+improve). Whether to further tune the rotation bound (45°) should wait for
+a re-measurement under non-backlit conditions; a quantitative re-test plus
+adding "avoid backlighting" capture guidance to the installation docs are
+left as follow-ups.
