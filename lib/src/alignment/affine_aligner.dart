@@ -47,19 +47,9 @@ class AffineAligner implements FaceAligner {
   final List<Point> referencePoints;
   final int outputSize;
 
-  /// Pose-quality gate bounds — see [_poseWithinBounds]. Defaults match
-  /// tool/analyze_alignment_log.py's independently-derived sanity bounds
-  /// (same repo, same real-device investigation).
-  final double maxRotationDegrees;
-  final double minScale;
-  final double maxScale;
-
   const AffineAligner({
     required this.referencePoints,
     required this.outputSize,
-    this.maxRotationDegrees = 45.0,
-    this.minScale = 0.05,
-    this.maxScale = 3.0,
   });
 
   factory AffineAligner.arcface112() =>
@@ -69,7 +59,7 @@ class AffineAligner implements FaceAligner {
       const AffineAligner(referencePoints: facenet160Ref, outputSize: 160);
 
   @override
-  AlignedFace? align(FaceImage image, DetectedFace face) {
+  AlignedFace align(FaceImage image, DetectedFace face) {
     // BlazeFace gives 6 keypoints, order rightEye[0], leftEye[1], nose[2],
     // mouth[3], rightEar[4], leftEar[5] (see blazeface_decoder.dart) — note
     // this is opposite the eye order this file used to assume. Confirmed by
@@ -87,36 +77,15 @@ class AffineAligner implements FaceAligner {
     final dst = _fourPointReference(referencePoints);
 
     final m = _umeyamaSimilarity(src, dst);
-    final poseOk = _poseWithinBounds(
-      m,
-      maxRotationDegrees: maxRotationDegrees,
-      minScale: minScale,
-      maxScale: maxScale,
-    );
     if (kFacekitVerboseDebug) {
       _debugAlignCallCount++;
       debugPrint(
         '[AffineAligner] DEBUG MATRIX #$_debugAlignCallCount '
         'a=${m[0].toStringAsFixed(4)} b=${m[1].toStringAsFixed(4)} tx=${m[2].toStringAsFixed(1)} '
         'c=${m[3].toStringAsFixed(4)} d=${m[4].toStringAsFixed(4)} ty=${m[5].toStringAsFixed(1)} '
-        'poseGate=${poseOk ? "ok" : "REJECTED"} src=$src',
+        'src=$src',
       );
     }
-
-    // Pose-quality gate. BlazeFace's landmarks are known to be unreliable
-    // under extreme pose/motion (doc/KR/postmortem/2026-08-03-affine-aligner-alignment.md's
-    // "left unresolved" section flagged this and deliberately didn't fix it
-    // as out of scope at the time). A fitted transform whose rotation/scale
-    // is far outside what a normal hand-held selfie can produce doesn't
-    // warp into "a slightly worse crop" — it warps into mostly background,
-    // which the embedder can't usefully compare against anything. Real-
-    // device data (doc/KR/adaface_verification.md, 2026-08-11) showed this
-    // noise compressing the measured genuine/impostor similarity gap to as
-    // little as 0.022 across sessions — rejecting these frames outright
-    // (same as "no face detected") addresses the cause directly, instead of
-    // continuing to chase the symptom via matching.threshold.
-    if (!poseOk) return null;
-
     final rgb = _warpBilinear(image, m, outputSize);
 
     return AlignedFace(rgbBytes: rgb, size: outputSize);
@@ -144,39 +113,6 @@ class AffineAligner implements FaceAligner {
     return [ref5[0], ref5[1], ref5[2], mouthMid];
   }
 }
-
-/// Decomposes a fitted 2×3 similarity matrix [m] = [a,b,tx,c,d,ty] into its
-/// rotation (degrees, `atan2(c, a)`) and uniform scale (`hypot(a, c)`), and
-/// checks both against sane bounds for a hand-held selfie. Pure function —
-/// no I/O, no state. Bounds match tool/analyze_alignment_log.py's, derived
-/// independently from the same real-device investigation.
-bool _poseWithinBounds(
-  List<double> m, {
-  required double maxRotationDegrees,
-  required double minScale,
-  required double maxScale,
-}) {
-  final rotationDegrees = math.atan2(m[3], m[0]) * 180 / math.pi;
-  final scale = math.sqrt(m[0] * m[0] + m[3] * m[3]);
-  return rotationDegrees.abs() <= maxRotationDegrees &&
-      scale >= minScale &&
-      scale <= maxScale;
-}
-
-/// Testing hook for [_poseWithinBounds].
-@visibleForTesting
-bool poseWithinBoundsForTest(
-  List<double> m, {
-  double maxRotationDegrees = 45.0,
-  double minScale = 0.05,
-  double maxScale = 3.0,
-}) =>
-    _poseWithinBounds(
-      m,
-      maxRotationDegrees: maxRotationDegrees,
-      minScale: minScale,
-      maxScale: maxScale,
-    );
 
 /// Testing hook — lets tests exercise the private similarity solver in
 /// isolation, independent of BlazeFace landmark picking/reordering.

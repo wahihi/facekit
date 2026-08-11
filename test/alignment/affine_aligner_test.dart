@@ -32,7 +32,7 @@ void main() {
       final aligner = AffineAligner.arcface112();
       final image = _solid(200, 200, 128, 64, 32);
       final face = _identityFace();
-      final aligned = aligner.align(image, face)!;
+      final aligned = aligner.align(image, face);
       expect(aligned.size, 112);
       expect(aligned.rgbBytes.length, 112 * 112 * 3);
     });
@@ -46,7 +46,7 @@ void main() {
         landmarks: facenet160Ref,
         score: 0.9,
       );
-      final aligned = aligner.align(image, face)!;
+      final aligned = aligner.align(image, face);
       expect(aligned.size, 160);
       expect(aligned.rgbBytes.length, 160 * 160 * 3);
     });
@@ -55,7 +55,7 @@ void main() {
       final aligner = AffineAligner.arcface112();
       final image = _solid(200, 200, 200, 100, 50);
       final face = _identityFace();
-      final aligned = aligner.align(image, face)!;
+      final aligned = aligner.align(image, face);
 
       // After identity-like transform on a solid image every pixel should
       // stay the same colour (within bilinear rounding tolerance ±2).
@@ -209,81 +209,5 @@ void main() {
         expect((m[0] - 1).abs() > 1e-3 || m[1].abs() > 1e-3, isTrue);
       },
     );
-  });
-
-  group('pose-quality gate (poseWithinBoundsForTest)', () {
-    // Matrix convention: [a, b, tx, c, d, ty], 2×2 part [[a,b],[c,d]].
-    // rotation = atan2(c, a), scale = hypot(a, c) — see _poseWithinBounds.
-    List<double> rotationMatrix(double degrees, {double scale = 1.0}) {
-      final theta = degrees * math.pi / 180;
-      final cosT = math.cos(theta) * scale, sinT = math.sin(theta) * scale;
-      return [cosT, -sinT, 0, sinT, cosT, 0];
-    }
-
-    test('identity (0°, scale 1) is within bounds', () {
-      expect(poseWithinBoundsForTest(rotationMatrix(0)), isTrue);
-    });
-
-    test('ordinary head-tilt rotations (±25°) are within bounds', () {
-      expect(poseWithinBoundsForTest(rotationMatrix(25)), isTrue);
-      expect(poseWithinBoundsForTest(rotationMatrix(-25)), isTrue);
-    });
-
-    test('90°-class rotation (the real bug this guards against) is rejected', () {
-      // The exact failure mode from doc/KR/postmortem/2026-07-24 and
-      // 2026-08-03: a landmark-order/camera-rotation bug fit the transform
-      // to 42-172° instead of a normal selfie's ~7-25°.
-      expect(poseWithinBoundsForTest(rotationMatrix(90)), isFalse);
-      expect(poseWithinBoundsForTest(rotationMatrix(-150)), isFalse);
-    });
-
-    test('exactly at the rotation bound is within bounds, just past it is not', () {
-      expect(poseWithinBoundsForTest(rotationMatrix(45.0)), isTrue);
-      expect(poseWithinBoundsForTest(rotationMatrix(45.001)), isFalse);
-    });
-
-    test('scale far outside [0.05, 3.0] is rejected regardless of rotation', () {
-      expect(poseWithinBoundsForTest(rotationMatrix(0, scale: 0.01)), isFalse);
-      expect(poseWithinBoundsForTest(rotationMatrix(0, scale: 10.0)), isFalse);
-    });
-
-    test('custom bounds are honoured', () {
-      expect(
-        poseWithinBoundsForTest(rotationMatrix(30), maxRotationDegrees: 20.0),
-        isFalse,
-      );
-    });
-  });
-
-  group('AffineAligner.align pose gate integration', () {
-    test('returns null for landmarks that fit an extreme rotation', () {
-      // Rotate the reference points 90° about their own centroid before
-      // feeding them as "detected" landmarks — AffineAligner should fit a
-      // ~90° transform and reject it, same as a real BlazeFace mis-fit.
-      final aligner = AffineAligner.arcface112();
-      final image = _solid(200, 200, 128, 64, 32);
-      double cx = 0, cy = 0;
-      for (final p in arcface112Ref) { cx += p.x; cy += p.y; }
-      cx /= arcface112Ref.length; cy /= arcface112Ref.length;
-      final theta = 90 * math.pi / 180;
-      final cosT = math.cos(theta), sinT = math.sin(theta);
-      final rotated = arcface112Ref.map((p) {
-        final dx = p.x - cx, dy = p.y - cy;
-        final rx = dx * cosT - dy * sinT, ry = dx * sinT + dy * cosT;
-        return Point(cx + rx, cy + ry);
-      }).toList();
-      final face = DetectedFace(
-        boundingBox: Rect(left: 0, top: 0, right: 112, bottom: 112),
-        landmarks: rotated,
-        score: 0.9,
-      );
-      expect(aligner.align(image, face), isNull);
-    });
-
-    test('returns non-null for a normal identity-like transform', () {
-      final aligner = AffineAligner.arcface112();
-      final image = _solid(200, 200, 128, 64, 32);
-      expect(aligner.align(image, _identityFace()), isNotNull);
-    });
   });
 }

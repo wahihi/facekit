@@ -57,11 +57,10 @@ n=$sampleCount (warmup 제외)
 ''';
 }
 
-/// Throws [StateError] if [image] stops yielding a detected face mid-run, or
-/// if the aligner's pose-quality gate rejects it — shouldn't happen since
-/// [image] is a frozen single frame, but the model call itself could still
-/// fail (e.g. interpreter error), so callers should still wrap this in a
-/// try/catch.
+/// Throws [StateError] if [image] stops yielding a detected face mid-run —
+/// shouldn't happen since [image] is a frozen single frame, but the model
+/// call itself could still fail (e.g. interpreter error), so callers should
+/// still wrap this in a try/catch.
 Future<BenchmarkResult> runBenchmark({
   required FaceDetector detector,
   required FaceAligner aligner,
@@ -86,9 +85,6 @@ Future<BenchmarkResult> runBenchmark({
 
     final face = faces.reduce((a, b) => a.score >= b.score ? a : b);
     final aligned = aligner.align(image, face);
-    if (aligned == null) {
-      throw StateError('벤치마크용 캡처 프레임이 포즈 게이트에서 거부됐습니다(회전/스케일 이상). 다시 시도해주세요.');
-    }
 
     final embedSw = Stopwatch()..start();
     await Isolate.run(() => embedder.embed(aligned));
