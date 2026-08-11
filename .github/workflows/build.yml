@@ -60,28 +60,56 @@ jobs:
             (also [in Korean](https://github.com/wahihi/facekit/blob/main/doc/KR/installation.md))
             for what it does and how to build it from source instead.
 
-            ## What's new in v0.1.2
+            ## What's new in v0.1.3
 
-            Fixes AuraFace being unable to tell two different people apart:
+            Adds a pose-quality gate to `AffineAligner`: if a frame's
+            fitted alignment transform has a rotation beyond ±45° or a
+            scale outside `[0.05, 3.0]` (both signs of a bad BlazeFace
+            landmark fit, not a real face), it's now rejected before
+            matching instead of being warped into a mostly-background crop
+            and compared anyway.
+
+            - This replaces trying to chase the problem via
+              `matching.threshold` alone: three real-device rounds showed
+              the observed genuine/impostor similarity margin shrinking as
+              the sample grew (0.156 → 0.036 → 0.022), which pointed at
+              alignment instability rather than an untuned threshold.
+              `matching.threshold` is fixed back at 0.30 (the LFW-derived
+              value from v0.1.2).
+            - `FaceAligner.align()`'s return type changed to `AlignedFace?`
+              accordingly (BYOM callers implementing the interface should
+              handle `null` the same as "no face detected").
+            - Real-device validation (self vs. a photo of someone else)
+              found the gate correctly filters rotation-bad frames (55%
+              rejected, 0 false triggers on scale) and did narrow the
+              genuine/impostor gap — but also surfaced that a lot of that
+              instability tracked with **backlighting**: a light source
+              behind the subject degraded landmark precision. Avoid strong
+              backlight for best results; a proper non-backlit
+              re-measurement is a follow-up.
+
+            Full write-up:
+            [doc/EN/adaface_verification.md](https://github.com/wahihi/facekit/blob/main/doc/EN/adaface_verification.md#giving-up-on-threshold-tuning-in-favor-of-a-pose-gate-2026-08-11-continued)
+            (also [in Korean](https://github.com/wahihi/facekit/blob/main/doc/KR/adaface_verification.md)).
+
+            <details>
+            <summary>v0.1.2 — AuraFace normalization fix</summary>
+
+            Fixed AuraFace being unable to tell two different people apart:
             an enrolled user and an unrelated person's photo were scoring
-            almost the same similarity (~0.9 both).
-
-            - The cause was `example/assets/models/auraface/manifest.json`'s
-              `input.normalize`, which fed raw 0–255 pixels in instead of
-              the standard ArcFace `(pixel-127.5)/127.5` normalization the
-              official `insightface` package's own loader auto-selects for
-              this exact model graph.
-            - Re-measured genuine/impostor separation on 200 real LFW pairs
-              (same methodology as ArcFace/AdaFace): EER 10.0%, and
-              `matching.threshold` updated from an unvalidated 0.40
-              placeholder to the measured 0.30.
-
-            Re-verified on a real device: clean crops of an unrelated
-            person's face now score 0.06–0.09 (clearly rejected), while the
-            enrolled user's own face clears the new threshold. Full
-            write-up:
+            almost the same similarity (~0.9 both). The cause was
+            `example/assets/models/auraface/manifest.json`'s
+            `input.normalize`, which fed raw 0–255 pixels in instead of the
+            standard ArcFace `(pixel-127.5)/127.5` normalization the
+            official `insightface` package's own loader auto-selects for
+            this exact model graph. Re-measured genuine/impostor separation
+            on 200 real LFW pairs (same methodology as ArcFace/AdaFace):
+            EER 10.0%, and `matching.threshold` updated from an unvalidated
+            0.40 placeholder to the measured 0.30. Full write-up:
             [doc/EN/postmortem/2026-08-09-auraface-normalization.md](https://github.com/wahihi/facekit/blob/main/doc/EN/postmortem/2026-08-09-auraface-normalization.md)
             (also [in Korean](https://github.com/wahihi/facekit/blob/main/doc/KR/postmortem/2026-08-09-auraface-normalization.md)).
+
+            </details>
 
             <details>
             <summary>v0.1.1 — AffineAligner fixes</summary>
