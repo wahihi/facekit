@@ -53,14 +53,59 @@ jobs:
           body: |
             Prebuilt release APK for facekit's example app (${{ github.ref_name }}).
 
-            Ships with **AuraFace** (Apache 2.0) as the default embedding
-            model — no manual model setup needed. Install directly on an
-            Android device (minSdk 24 / Android 7.0+); see
+            Ships with **YuNet** (MIT) as the default face detector and
+            **AuraFace** (Apache 2.0) as the default embedding model — no
+            manual model setup needed. Install directly on an Android
+            device (minSdk 24 / Android 7.0+); see
             [doc/EN/installation.md](https://github.com/wahihi/facekit/blob/main/doc/EN/installation.md)
             (also [in Korean](https://github.com/wahihi/facekit/blob/main/doc/KR/installation.md))
             for what it does and how to build it from source instead.
 
-            ## What's new in v0.1.3
+            ## What's new in v0.1.4
+
+            Replaces **BlazeFace** with **YuNet**
+            (OpenCV Zoo/libfacedetection, MIT) as the default face
+            detector. YuNet outputs 5 landmarks natively (2 eyes, nose, 2
+            mouth corners), which removes a compromise BlazeFace forced on
+            `AffineAligner`: BlazeFace only ever gave a single mouth point,
+            so the aligner had to collapse ArcFace's true 5-point reference
+            down to 4 points. YuNet's 5 points are used directly instead,
+            behind a new opt-in `AffineAligner(nativeFivePoint: true)` mode
+            — the existing 4-point path is unchanged and still used by
+            `BlazeFaceDetector`, which remains available as a fallback.
+
+            - LFW-measured accuracy with YuNet's real alignment: AuraFace
+              clean EER improved from 10.0% to 2.5% (ArcFace: 8.5% → 2.5%),
+              beating an earlier SCRFD candidate that had to be ruled out
+              on licensing (InsightFace's non-commercial-research clause).
+            - The decode formula for YuNet's raw 12-tensor ONNX output was
+              verified byte-for-byte against `cv2.FaceDetectorYN`'s own
+              output before porting to Dart, and those verified values are
+              now a permanent regression test
+              (`test/detection/yunet_decoder_test.dart`).
+            - On-device tuning (Pixel 7) needed two rounds: the initial
+              `score_threshold=0.6` caused detection to flicker in and out
+              every frame, blocking liveness from ever completing;
+              `0.3` fixed the flicker but let through edge-of-frame false
+              detections. `0.45` was the value that fixed both.
+            - Along the way, `AuraFace`'s `matching.threshold` turned out
+              to still be a value measured under BlazeFace's
+              alignment-free methodology (0.30, EER 10.0%) — updated to a
+              measurement already sitting unused in the repo under YuNet's
+              real alignment (0.211, EER 2.5%). Real-device impostor
+              testing (a photo of a different person) confirmed no false
+              acceptances at the new threshold.
+
+            Full write-up:
+            [doc/EN/postmortem/2026-08-12-yunet-dart-port-and-device-tuning.md](https://github.com/wahihi/facekit/blob/main/doc/EN/postmortem/2026-08-12-yunet-dart-port-and-device-tuning.md)
+            (also [in Korean](https://github.com/wahihi/facekit/blob/main/doc/KR/postmortem/2026-08-12-yunet-dart-port-and-device-tuning.md)),
+            plus the Python-side detector research and licensing
+            investigation:
+            [doc/EN/postmortem/2026-08-12-yunet-landmark-order.md](https://github.com/wahihi/facekit/blob/main/doc/EN/postmortem/2026-08-12-yunet-landmark-order.md)
+            (also [in Korean](https://github.com/wahihi/facekit/blob/main/doc/KR/postmortem/2026-08-12-yunet-landmark-order.md)).
+
+            <details>
+            <summary>v0.1.3 — pose-quality gate</summary>
 
             Adds a pose-quality gate to `AffineAligner`: if a frame's
             fitted alignment transform has a rotation beyond ±45° or a
@@ -91,6 +136,8 @@ jobs:
             Full write-up:
             [doc/EN/adaface_verification.md](https://github.com/wahihi/facekit/blob/main/doc/EN/adaface_verification.md#giving-up-on-threshold-tuning-in-favor-of-a-pose-gate-2026-08-11-continued)
             (also [in Korean](https://github.com/wahihi/facekit/blob/main/doc/KR/adaface_verification.md)).
+
+            </details>
 
             <details>
             <summary>v0.1.2 — AuraFace normalization fix</summary>
