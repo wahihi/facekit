@@ -35,6 +35,7 @@ migrate_working_dir/
 **/assets/models/*/*.tflite
 !assets/models/blazeface_short/*.tflite
 !assets/models/face_landmark_478/*.tflite
+!assets/models/yunet_160/*.tflite
 
 # tool/model_verification/ local run artifacts — the scripts there download/
 # fetch these into place themselves (see the folder's README), and some are
@@ -48,11 +49,17 @@ tool/model_verification/*.jpg
 tool/model_verification/*.jpeg
 tool/model_verification/*.png
 tool/model_verification/*.parquet
+tool/model_verification/*.npy
+# onnx2tf's local saved_model + tflite conversion working directory (e.g.
+# yunet_tflite_out/) — the actual shipped output is copied to
+# assets/models/<name>/ by hand; this dir is just onnx2tf's scratch space.
+tool/model_verification/*_tflite_out/
 
 # flutter run --dart-define=FACEKIT_VERBOSE_DEBUG=true device logs saved for
 # local analysis (tool/analyze_alignment_log.py) — contains base64 face crop
 # dumps, never meant to be committed.
 example/test/log.test
+example/test/log_*.test
 
 # Flutter/Dart/Pub related
 # Libraries should not include pubspec.lock, per https://dart.dev/guides/libraries/private-files#pubspeclock.

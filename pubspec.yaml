@@ -22,3 +22,4 @@ flutter:
   assets:
     - assets/models/blazeface_short/
     - assets/models/face_landmark_478/
+    - assets/models/yunet_160/

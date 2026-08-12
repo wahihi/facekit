@@ -14,8 +14,8 @@
   "alignment": { "type": "five_point_affine", "reference": "arcface_112" },
   "matching": {
     "metric": "cosine",
-    "threshold": 0.30,
-    "threshold_note": "2026-08-11 재정정: 0.30(LFW 200쌍, 정렬 미적용 리사이즈, EER=10.0%)으로 되돌림. 사이에 실기기 관찰값 기반으로 0.25, 0.27까지 낮춰봤는데, 표본을 4개→77개→137개로 늘릴 때마다 genuine/impostor 간 실측 간격이 0.156→0.036→0.022로 계속 좁아지는 추세가 확인됐음(실기기 세션 3회, 일론 머스크/젠슨 황 대상) — threshold를 계속 낮춰 쫓아가는 방식은 한계가 있다고 판단. 좁아지는 진짜 원인은 BlazeFace 랜드마크 불안정성(실기기 프레임의 24~42%가 회전 이상으로 플래그됨, doc/KR/postmortem/2026-08-03-affine-aligner-alignment.md)이 genuine 유사도 자체를 널뛰게 만드는 것으로 보여서, threshold 미세조정 대신 AffineAligner에 포즈 게이트를 추가함(회전 45도 초과 또는 스케일이 [0.05, 3.0] 밖이면 그 프레임은 aligner.align()이 null을 반환해 매칭에서 아예 제외 — lib/src/alignment/affine_aligner.dart, poseWithinBoundsForTest로 단위 테스트됨). 포즈 게이트가 근본 원인을 다루므로 threshold는 다시 검증된 LFW EER 기준값(0.30)으로 고정. 정렬 포함 재측정(EER=6.5%/threshold=0.137, insightface SCRFD 기준, tool/model_verification/compare_with_alignment.py)은 facekit 자체 BlazeFace보다 낙관적일 수 있어 채택하지 않음. 방법론/원자료: doc/KR/adaface_verification.md, tool/model_verification/, doc/KR/postmortem/."
+    "threshold": 0.211,
+    "threshold_note": "2026-08-12 재측정: YuNet 5점 네이티브 정렬(BlazeFace 4점 압축 아님) 기준 LFW 200쌍 재측정 결과 threshold_clean_eer=0.211, eer_clean=2.5%로 교체 (tool/model_verification/compare_with_yunet.py, results_yunet.json). 직전 값 0.30(2026-08-11, LFW 정렬 미적용 리사이즈, EER=10.0%)은 그 시점엔 BlazeFace가 진짜 5점 대신 4점 압축만 제공해 정렬 자체를 신뢰할 수 없었기 때문에 채택을 보류했던 값 — 이제 YuNet이 왜곡 없는 5점을 직접 주므로 정렬 포함 재측정치를 그대로 채택. 이전 이력(0.25/0.27 실기기 관찰 기반 하향 시도, BlazeFace 랜드마크 불안정성으로 genuine 유사도가 널뛰던 문제, AffineAligner 포즈 게이트 추가)은 doc/KR/postmortem/2026-08-03-affine-aligner-alignment.md 참고 — 포즈 게이트는 YuNet 전환 후에도 유지됨. 방법론/원자료: doc/KR/postmortem/2026-08-12-yunet-landmark-order.md, tool/model_verification/."
   },
   "license": {
     "tier": "bundled",

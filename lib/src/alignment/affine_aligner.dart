@@ -54,19 +54,47 @@ class AffineAligner implements FaceAligner {
   final double minScale;
   final double maxScale;
 
+  /// Landmark correspondence mode.
+  ///
+  /// false (default) — BlazeFace-style: pick+reorder 4 usable points out of
+  /// the detector's landmarks (see [_pickFourPoints]) and match them against
+  /// [referencePoints] with its two mouth-corner points collapsed to one
+  /// (see [_fourPointReference]). This is a compromise made necessary by
+  /// BlazeFace only ever supplying a single mouth-centre landmark, not two
+  /// corners.
+  ///
+  /// true — native 5-point: use the detector's first 5 landmarks directly,
+  /// unmodified, against [referencePoints] directly. Set this for detectors
+  /// that natively output 5 points already in ArcFace-reference order
+  /// (e.g. YuNet — see yunet_decoder.dart's keypoint-order comment and
+  /// doc/KR/postmortem/2026-08-12-yunet-landmark-order.md). Do NOT relabel
+  /// or reorder such a detector's raw output before passing it in here —
+  /// that postmortem found the "obviously correct" relabelling to actually
+  /// be wrong (collapsed the fitted scale to ~1/7 of expected).
+  final bool nativeFivePoint;
+
   const AffineAligner({
     required this.referencePoints,
     required this.outputSize,
     this.maxRotationDegrees = 45.0,
     this.minScale = 0.05,
     this.maxScale = 3.0,
+    this.nativeFivePoint = false,
   });
 
-  factory AffineAligner.arcface112() =>
-      const AffineAligner(referencePoints: arcface112Ref, outputSize: 112);
+  factory AffineAligner.arcface112({bool nativeFivePoint = false}) =>
+      AffineAligner(
+        referencePoints: arcface112Ref,
+        outputSize: 112,
+        nativeFivePoint: nativeFivePoint,
+      );
 
-  factory AffineAligner.facenet160() =>
-      const AffineAligner(referencePoints: facenet160Ref, outputSize: 160);
+  factory AffineAligner.facenet160({bool nativeFivePoint = false}) =>
+      AffineAligner(
+        referencePoints: facenet160Ref,
+        outputSize: 160,
+        nativeFivePoint: nativeFivePoint,
+      );
 
   @override
   AlignedFace? align(FaceImage image, DetectedFace face) {
@@ -83,8 +111,18 @@ class AffineAligner implements FaceAligner {
     // pulled the fit even further off. 4-point similarity (eyes+nose+mouth,
     // matched against the ArcFace reference with its two mouth-corner points
     // collapsed to their midpoint) avoids that bad correspondence.
-    final src = _pickFourPoints(face.landmarks);
-    final dst = _fourPointReference(referencePoints);
+    final List<Point> src;
+    final List<Point> dst;
+    if (nativeFivePoint) {
+      if (face.landmarks.length < 5) {
+        throw ArgumentError('Need 5 landmarks, got ${face.landmarks.length}');
+      }
+      src = face.landmarks.sublist(0, 5);
+      dst = referencePoints;
+    } else {
+      src = _pickFourPoints(face.landmarks);
+      dst = _fourPointReference(referencePoints);
+    }
 
     final m = _umeyamaSimilarity(src, dst);
     final poseOk = _poseWithinBounds(

@@ -20,6 +20,8 @@ export 'src/inference/tflite_runner.dart';
 export 'src/detection/blazeface_anchors.dart';
 export 'src/detection/blazeface_decoder.dart';
 export 'src/detection/blazeface_detector.dart';
+export 'src/detection/yunet_decoder.dart';
+export 'src/detection/yunet_detector.dart';
 
 export 'src/embedding/adapters/embedder_adapter.dart';
 export 'src/embedding/adapters/arcface_adapter.dart';

@@ -1,6 +1,6 @@
 // facekit example — register a face, then recognize it live from the camera.
 //
-// Loads BlazeFace (bundled with the facekit package) for detection,
+// Loads YuNet (bundled with the facekit package, MIT licence) for detection,
 // MediaPipe Face Landmarker (also bundled, Apache 2.0) for blink-based
 // liveness, and AuraFace (bundled/redistributable, Apache 2.0 — see
 // assets/models/auraface/) for embedding, then drives FacePipeline end-to-end
@@ -8,6 +8,15 @@
 // committed to git (see tool/fetch_models.sh); arcface_buffalo_l is kept
 // alongside it as a BYOM example — swap `_embedderDir`/`_embedderFile` below
 // to switch.
+//
+// YuNet replaced BlazeFace as the default detector (doc/KR/postmortem/
+// 2026-08-12-yunet-landmark-order.md) — it natively outputs 5 landmarks
+// (2 eyes, nose, 2 mouth corners), letting AffineAligner use the true
+// ArcFace 5-point reference instead of BlazeFace's 4-point compromise
+// (BlazeFace only ever gave a single mouth-centre point). Real-device
+// validation of this switch is still pending; BlazeFaceDetector remains
+// available (lib/src/detection/blazeface_detector.dart) as a fallback if
+// YuNet underperforms on-device.
 //
 // Every frame draws a box overlay (see face_overlay.dart) over the detected
 // face, and gates enroll/identify on `BlinkLivenessDetector` passing first —
@@ -103,14 +112,17 @@ class _RecognitionPageState extends State<RecognitionPage> {
   bool _useNnApiForBenchmark = false;
 
   // How long a face can be briefly undetected before liveness progress is
-  // discarded. Observed on real Pixel 7 hardware: BlazeFace's detection
-  // score can hover right around its 0.5 threshold (logged score 0.5-0.7),
-  // flickering found/lost every ~100-200ms. Without this grace period,
-  // _liveness.reset() fired on every single missed frame and the 4s blink
-  // window restarted from zero each time, making `passed` take far longer
-  // than intended. 500ms is a round starting value sized to cover a few
-  // missed-detection frames, not derived from measured footage — revisit if
-  // it proves too forgiving or still resets too often.
+  // discarded. Originally measured on real Pixel 7 hardware with BlazeFace:
+  // its detection score could hover right around its 0.5 threshold (logged
+  // score 0.5-0.7), flickering found/lost every ~100-200ms. Without this
+  // grace period, _liveness.reset() fired on every single missed frame and
+  // the 4s blink window restarted from zero each time, making `passed` take
+  // far longer than intended. 500ms was a round starting value sized to
+  // cover a few missed-detection frames, not derived from measured footage.
+  // Carried over as-is for YuNet (score_threshold 0.6, see
+  // assets/models/yunet_160/manifest.json) — not yet re-measured on-device
+  // for the new detector's own flicker behaviour; revisit if it proves too
+  // forgiving or still resets too often.
   static const _faceLossGraceMs = 500;
   int? _faceLostSinceMs;
 
@@ -120,7 +132,7 @@ class _RecognitionPageState extends State<RecognitionPage> {
   // device without touching the main pipeline used for real enroll/identify.
   ModelManifest? _detectorManifest;
   ModelManifest? _embedderManifest;
-  BlazeFaceDetector? _nnapiDetector;
+  YuNetDetector? _nnapiDetector;
   TfliteFaceEmbedder? _nnapiEmbedder;
 
   @override
@@ -133,12 +145,12 @@ class _RecognitionPageState extends State<RecognitionPage> {
     try {
       final detectorManifest = ModelManifest.fromJsonString(
         await rootBundle.loadString(
-          'packages/facekit/assets/models/blazeface_short/manifest.json',
+          'packages/facekit/assets/models/yunet_160/manifest.json',
         ),
       );
-      final detector = await BlazeFaceDetector.fromAsset(
+      final detector = await YuNetDetector.fromAsset(
         tfliteAssetPath:
-            'packages/facekit/assets/models/blazeface_short/face_detection_short_range.tflite',
+            'packages/facekit/assets/models/yunet_160/yunet_160.tflite',
         manifest: detectorManifest,
       );
       _detectorManifest = detectorManifest;
@@ -154,7 +166,7 @@ class _RecognitionPageState extends State<RecognitionPage> {
 
       _pipeline = FacePipeline(
         detector: detector,
-        aligner: AffineAligner.arcface112(),
+        aligner: AffineAligner.arcface112(nativeFivePoint: true),
         embedder: embedder,
         matcher: CosineMatcher.fromManifest(embedderManifest),
       );
@@ -295,7 +307,7 @@ class _RecognitionPageState extends State<RecognitionPage> {
 
   /// Runs every camera frame, independent of enroll/identify state, so the
   /// box overlay + liveness check are always live. The detect→landmark→
-  /// liveness chain is cheap (BlazeFace + a small 256×256 landmark model;
+  /// liveness chain is cheap (YuNet + a small 256×256 landmark model;
   /// see doc/KR/benchmark.md) and runs on the calling isolate, matching how
   /// `FacePipeline.identify/enroll` already run detection synchronously —
   /// only embedding inference (the expensive step) goes to an isolate.
@@ -427,9 +439,9 @@ class _RecognitionPageState extends State<RecognitionPage> {
     final embedderManifest = _embedderManifest;
     if (detectorManifest == null || embedderManifest == null) return;
 
-    _nnapiDetector = await BlazeFaceDetector.fromAsset(
+    _nnapiDetector = await YuNetDetector.fromAsset(
       tfliteAssetPath:
-          'packages/facekit/assets/models/blazeface_short/face_detection_short_range.tflite',
+          'packages/facekit/assets/models/yunet_160/yunet_160.tflite',
       manifest: detectorManifest,
       useNnApi: true,
     );

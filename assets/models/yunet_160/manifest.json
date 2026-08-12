@@ -1,0 +1,27 @@
+{
+  "name": "yunet_160",
+  "family": "yunet",
+  "file": "yunet_160.tflite",
+  "input": {
+    "width": 160,
+    "height": 160,
+    "color": "BGR",
+    "layout": "NHWC",
+    "normalize": {
+      "mean": [0, 0, 0],
+      "std":  [1, 1, 1]
+    }
+  },
+  "output": {},
+  "detection": {
+    "score_threshold": 0.45,
+    "iou_threshold": 0.3,
+    "max_faces": 5
+  },
+  "license": {
+    "tier": "bundled",
+    "redistributable": true,
+    "source": "OpenCV Zoo / libfacedetection YuNet",
+    "note": "MIT licence. Model weights and code. Commercial use permitted. https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet — re-exported with a fixed 160x160 input (tool/model_verification/, onnx2tf) for mobile-friendly fully-convolutional inference; same trained weights/architecture as the upstream face_detection_yunet_2023mar.onnx, just a different static input shape."
+  }
+}

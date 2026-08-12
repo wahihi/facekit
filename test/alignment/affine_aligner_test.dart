@@ -211,6 +211,58 @@ void main() {
     );
   });
 
+  group('AffineAligner native 5-point mode (YuNet)', () {
+    // YuNet natively outputs 5 landmarks already in the correspondence
+    // arcface112Ref itself uses positionally — no BlazeFace-style
+    // pick/reorder/collapse needed. But YuNet's own author-given
+    // right_eye/left_eye labels are the *opposite* handedness from
+    // facekit's arcface112Ref order (doc/KR/postmortem/
+    // 2026-08-12-yunet-landmark-order.md); the fix that mattered there was
+    // "don't relabel — use YuNet's raw output order as-is". These tests
+    // pin that down as a regression, per the postmortem's own request
+    // ("needs to be pinned down not just in a code comment but in a
+    // regression test too").
+
+    test('feeding arcface112Ref in its own raw order round-trips to identity', () {
+      final m = umeyamaSimilarityForTest(arcface112Ref, arcface112Ref);
+      expect(m[0], closeTo(1, 1e-6)); // a
+      expect(m[1], closeTo(0, 1e-6)); // b
+      expect(m[3], closeTo(0, 1e-6)); // c
+      expect(m[4], closeTo(1, 1e-6)); // d
+    });
+
+    test('"correcting" by swapping the two eye points does NOT round-trip to identity', () {
+      // Regression guard in the other direction, mirroring the BlazeFace
+      // eye-order test above: confirms that the naive "the two eye points
+      // look swappable, let me fix that" instinct is actually wrong here —
+      // swapping produces a measurably different (non-identity) fit.
+      final swapped = [
+        arcface112Ref[1], arcface112Ref[0],
+        arcface112Ref[2], arcface112Ref[3], arcface112Ref[4],
+      ];
+      final m = umeyamaSimilarityForTest(swapped, arcface112Ref);
+      expect((m[0] - 1).abs() > 1e-3 || m[1].abs() > 1e-3, isTrue);
+    });
+
+    test('AffineAligner.align with nativeFivePoint:true accepts 5 raw landmarks directly', () {
+      final aligner = AffineAligner.arcface112(nativeFivePoint: true);
+      final image = _solid(200, 200, 60, 90, 120);
+      final face = DetectedFace(
+        boundingBox: Rect(left: 0, top: 0, right: 112, bottom: 112),
+        landmarks: arcface112Ref, // raw order, unmodified — same as YuNetDetector's output
+        score: 0.95,
+      );
+      final aligned = aligner.align(image, face);
+      expect(aligned, isNotNull);
+      expect(aligned!.size, 112);
+    });
+
+    test('default (nativeFivePoint:false) is unaffected by the new field', () {
+      final aligner = AffineAligner.arcface112();
+      expect(aligner.nativeFivePoint, isFalse);
+    });
+  });
+
   group('pose-quality gate (poseWithinBoundsForTest)', () {
     // Matrix convention: [a, b, tx, c, d, ty], 2×2 part [[a,b],[c,d]].
     // rotation = atan2(c, a), scale = hypot(a, c) — see _poseWithinBounds.
