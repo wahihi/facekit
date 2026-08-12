@@ -1,0 +1,20 @@
+{
+  "fallback_to_resize": 0,
+  "total_images": 400,
+  "arcface": {
+    "threshold_clean_eer": 0.15774738788604736,
+    "eer_clean": 0.025000000000000022,
+    "accuracy_clean_at_threshold": 0.975,
+    "accuracy_degraded_at_clean_threshold": 0.965,
+    "threshold_degraded_eer": 0.1403442919254303,
+    "eer_degraded": 0.04000000000000002
+  },
+  "auraface": {
+    "threshold_clean_eer": 0.21119210124015808,
+    "eer_clean": 0.02500000000000002,
+    "accuracy_clean_at_threshold": 0.975,
+    "accuracy_degraded_at_clean_threshold": 0.94,
+    "threshold_degraded_eer": 0.21536502242088318,
+    "eer_degraded": 0.060000000000000026
+  }
+}

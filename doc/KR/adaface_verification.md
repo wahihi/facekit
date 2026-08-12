@@ -235,3 +235,66 @@ threshold 0.25/0.27은 매번 그 시점 데이터에선 "통과"했지만(예: 
 더 조정할지는 역광을 피한 조건에서 재측정한 뒤 판단하는 게 맞다고 보고, 정량
 재측정과 함께 설치 문서에 "역광을 피하라"는 촬영 가이드를 추가하는 걸
 후속 과제로 남긴다.
+
+## 검출기 자체를 바꾸는 건 어떨까 — YuNet 조사 (2026-08-12 추가)
+
+BlazeFace는 랜드마크 6점 중 입을 1점만 줘서, `AffineAligner`가 ArcFace 5점 기준
+좌표(입꼬리 2점 요구)를 4점(눈2+코+입중심)으로 타협해서 쓰고 있다. "애초에
+ArcFace가 기대하는 5점(눈2+코+입꼬리2)을 네이티브로 주는 detector로 바꾸면 이
+타협 자체가 필요 없어지지 않겠냐"는 질문에서 시작했다.
+
+**후보 조사**: SCRFD(InsightFace)와 YuNet(OpenCV Zoo/libfacedetection) 둘 다
+5점 네이티브 출력을 지원한다. 둘의 라이선스를 직접 대조했다:
+
+- **SCRFD**: `detection/scrfd/LICENSE`는 Apache 2.0이지만, InsightFace
+  저장소의 최상위 README가 코드와 가중치 라이선스를 명시적으로 분리해서
+  "The training data containing the annotation (and the models trained with
+  these data) are available for non-commercial research purposes only"라고
+  못박아둔다 — `buffalo_l`(이 프로젝트가 이미 연구용으로 취급 중인 모델)이
+  구체적 예시로 언급된다. 독립적으로, SCRFD의 학습 데이터인 WIDER FACE 자체도
+  CC BY-NC-ND 라이선스로 확인된다. 근거 두 갈래가 모두 "비상업"으로 수렴 —
+  **채택 불가로 확정.**
+- **YuNet**: 배포처(OpenCV Zoo README)가 모델 자체를 명시적으로 MIT로
+  표기한다. `CLAUDE.md:15`에 이미 "검출(BlazeFace Apache2.0 / YuNet MIT):
+  동봉 가능"이라고 적혀 있었다 — 이 프로젝트 라이선스 정책이 애초에 YuNet을
+  대안으로 염두에 두고 있었던 것으로 보인다.
+
+**1차 파이썬 검증(`tool/model_verification/compare_with_yunet.py`) — EER 48~49%로 사실상 랜덤.**
+`cv2.FaceDetectorYN`으로 검출한 5점을 `insightface.utils.face_align.norm_crop()`에
+넣어(SCRFD 검증 때와 같은 정렬 함수, `arcface_dst` 기준점 재사용) LFW 200쌍을
+돌렸는데, ArcFace/AuraFace 둘 다 genuine/impostor 평균이 거의 같은 값(예:
+ArcFace genuine 0.78 vs impostor 0.75)으로 나왔다 — 지금까지 아무리 나쁜
+정렬(BlazeFace 최악 조건)에서도 이 정도로 완전히 무너진 적은 없었다.
+
+**디버깅**: raw 검출값(bbox, 5점, score) 여러 장을 직접 찍어보니 전부 정상적인
+얼굴 기하였다(점수 0.92~0.95, 눈-코-입 배치 정상). 실제 정렬 크롭을 PNG로
+복원해보니 — 작은 얼굴이 새까만 배경에 둘러싸여 있었다. 변환행렬을 직접 계산해보니
+스케일이 0.125(눈 간격만으로 추정한 기대값 ~0.83~0.91의 약 1/7)로 나왔는데, **이건
+insightface의 `norm_crop`과 facekit 자체 Umeyama 구현(둘 다 독립적으로 파이썬
+포팅해서 대조) 양쪽에서 동일하게 재현**돼서 라이브러리 버그가 아니라 입력
+자체의 문제로 좁혀졌다.
+
+**원인**: YuNet의 `right_eye`/`left_eye`(그리고 `right_mouth`/`left_mouth`) 이름표가
+facekit이 가정한 좌우 규약과 정반대였다 — **BlazeFace 눈 순서 버그**(8/3
+포스트모템)와 정확히 같은 종류의 실수를 또 저지른 것이다. YuNet의 raw 순서를
+재배열 없이 그대로 `arcface_dst`에 매핑하니 스케일 0.906, 회전 1.46°로 즉시
+정상화됐다.
+
+**재측정 결과** (같은 LFW 200쌍, 방법론 동일):
+
+| 방법 | ArcFace EER(clean/degraded) | AuraFace EER(clean/degraded) |
+|---|---|---|
+| 리사이즈만(정렬 미적용) | 8.5% / 25.0% | 10.0% / 28.0% |
+| SCRFD 정렬(라이선스 문제로 폐기) | 3.0% / 5.0% | 6.5% / 8.0% |
+| **YuNet 정렬(수정 후)** | **2.5% / 4.0%** | **2.5% / 6.0%** |
+
+SCRFD보다도 좋은 결과이고, **ArcFace와 AuraFace의 clean EER이 정확히 2.5%로
+같아졌다** — 이 세션 내내 반복됐던 "AuraFace가 셋 중 제일 약하다"는 패턴이,
+사실은 모델 자체의 한계가 아니라 **정렬 품질(BlazeFace의 4점 타협)에 AuraFace가
+유독 더 민감했던 것**일 가능성을 시사한다.
+
+**교훈**: "모델 제작자가 붙인 랜드마크 이름을 검증 없이 믿지 말 것"이 이번에
+두 번째로 확인됐다. 실제 Dart 구현으로 옮길 때 같은 함정을 또 밟지 않으려면,
+이 좌우 매핑 자체를 코드 주석과 회귀 테스트로 명시적으로 고정해둬야 한다.
+자세한 디버깅 경위는
+[doc/KR/postmortem/2026-08-12-yunet-landmark-order.md](postmortem/2026-08-12-yunet-landmark-order.md) 참고.

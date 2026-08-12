@@ -126,3 +126,41 @@ all requested models (not re-detected per model). If SCRFD finds no face
 in a given LFW crop it falls back to a plain resize for that one image
 (logged as a count) rather than dropping the pair — LFW funneled crops are
 mostly clean frontal faces so this should be rare.
+
+## compare_with_yunet.py
+
+SCRFD's pretrained weights turned out to be non-commercial-only (see
+`doc/KR/postmortem/2026-08-12-yunet-landmark-order.md`) — this re-runs the
+same alignment-comparison methodology with **YuNet**
+(OpenCV Zoo/libfacedetection, MIT-licensed, already named as bundleable in
+`CLAUDE.md`) instead. Detection uses `cv2.FaceDetectorYN` (built into
+opencv-python); alignment still goes through
+`insightface.utils.face_align.norm_crop()` with the same `arcface_dst`
+reference, so results are directly comparable to
+`compare_with_alignment.py`'s SCRFD numbers. Shares
+`compare_arcface_adaface.py`'s embedder classes, same as the other two
+scripts.
+
+```
+pip install opencv-python insightface tensorflow onnxruntime pandas pyarrow pillow scikit-learn numpy
+curl -sL -o yunet.onnx "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
+python compare_with_yunet.py \
+  --yunet-onnx yunet.onnx \
+  --auraface-tflite ../../example/assets/models/auraface/auraface_r100_fp16.tflite \
+  --arcface-tflite /path/to/w600k_r50.tflite \
+  --pairs-parquet lfw_pairs_test.parquet \
+  --out results_yunet.json
+```
+
+**Landmark order pitfall (read before touching the alignment code):**
+`cv2.FaceDetectorYN`'s output row is `[x,y,w,h, x_re,y_re, x_le,y_le,
+x_nt,y_nt, x_rmc,y_rmc, x_lmc,y_lmc, score]` — but YuNet's own
+`right_eye`/`left_eye`/`right_mouth`/`left_mouth` naming is the *opposite*
+handedness from facekit's `arcface_dst` convention. Feed the raw order
+straight into `norm_crop` with **no relabeling** (`best[4:14].reshape(5,
+2)`, exactly as this script does) — "correcting" it to match ArcFace's
+named order by swapping left/right produces a fitted scale of ~0.125
+(should be ~0.9), i.e. a tiny face on a mostly-black crop, and collapses
+EER to ~48% (random). This is the same class of bug as the BlazeFace
+eye-order fix in `lib/src/alignment/affine_aligner.dart` — verify against
+actual pixel positions, never trust a landmark name as-is.

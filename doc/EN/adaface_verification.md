@@ -294,3 +294,77 @@ improve). Whether to further tune the rotation bound (45°) should wait for
 a re-measurement under non-backlit conditions; a quantitative re-test plus
 adding "avoid backlighting" capture guidance to the installation docs are
 left as follow-ups.
+
+## What about swapping the detector itself? — investigating YuNet (added 2026-08-12)
+
+BlazeFace only gives one mouth point out of its 6 landmarks, forcing
+`AffineAligner` to compromise ArcFace's true 5-point reference (which wants
+2 mouth corners) down to 4 points (2 eyes + nose + mouth center). This
+started from asking: if a detector natively gave ArcFace's real 5 points
+(2 eyes + nose + 2 mouth corners), would that compromise become
+unnecessary?
+
+**Candidate research**: both SCRFD (InsightFace) and YuNet (OpenCV
+Zoo/libfacedetection) natively support 5-point output. Their licenses were
+checked directly:
+
+- **SCRFD**: `detection/scrfd/LICENSE` is Apache 2.0, but InsightFace's
+  top-level README explicitly separates code license from model license:
+  "The training data containing the annotation (and the models trained
+  with these data) are available for non-commercial research purposes
+  only" — naming `buffalo_l` (already treated as research-only in this
+  project) as a concrete example. Independently, SCRFD's training data,
+  WIDER FACE, is itself confirmed CC BY-NC-ND licensed. Two independent
+  lines of evidence both converge on "non-commercial" — **ruled out.**
+- **YuNet**: its distributor (the OpenCV Zoo README) explicitly labels the
+  model itself MIT. `CLAUDE.md:15` already said "Detection (BlazeFace
+  Apache2.0 / YuNet MIT): may be bundled" — this project's own license
+  policy had apparently already anticipated YuNet as an alternative.
+
+**First Python validation
+(`tool/model_verification/compare_with_yunet.py`) — EER 48-49%, essentially
+random.** 5 points from `cv2.FaceDetectorYN` were fed into
+`insightface.utils.face_align.norm_crop()` (the same alignment function
+used for the SCRFD validation, reusing the same `arcface_dst` reference)
+over the same 200 LFW pairs. Both ArcFace and AuraFace came back with
+genuine and impostor means nearly identical (e.g. ArcFace genuine 0.78 vs.
+impostor 0.75) — even the worst BlazeFace conditions measured so far never
+collapsed this completely.
+
+**Debugging**: raw detections (bbox, 5 points, score) looked completely
+normal across several sample images (score 0.92-0.95, sane eye-nose-mouth
+geometry). Reconstructing an actual aligned crop as a PNG showed a tiny
+face surrounded by solid black — visualizing revealed what the numbers
+alone hadn't. Computing the fitted transform directly gave a scale of
+0.125 (about 1/7 of the ~0.83-0.91 expected from eye spacing alone) —
+reproduced identically by both insightface's `norm_crop` and facekit's own
+Umeyama solver (independently ported to Python and cross-checked), which
+ruled out a library bug and pointed at the input itself.
+
+**Root cause**: YuNet's own `right_eye`/`left_eye` (and
+`right_mouth`/`left_mouth`) labels turned out to be the exact opposite
+handedness from what facekit assumed — the same class of mistake as the
+**BlazeFace eye-order bug** (2026-08-03 postmortem), made again. Feeding
+YuNet's raw order straight into `arcface_dst` with no relabeling
+immediately normalized to scale 0.906, rotation 1.46°.
+
+**Re-measured results** (same 200 LFW pairs, identical methodology):
+
+| Method | ArcFace EER (clean/degraded) | AuraFace EER (clean/degraded) |
+|---|---|---|
+| Resize only (no alignment) | 8.5% / 25.0% | 10.0% / 28.0% |
+| SCRFD-aligned (ruled out on license) | 3.0% / 5.0% | 6.5% / 8.0% |
+| **YuNet-aligned (after the fix)** | **2.5% / 4.0%** | **2.5% / 6.0%** |
+
+Better than SCRFD, and **ArcFace and AuraFace's clean EER landed at exactly
+the same 2.5%** — the "AuraFace is the weakest of the three" pattern that
+ran through this entire session may not have been a limit of the model
+itself after all, but AuraFace being unusually sensitive to alignment
+quality (BlazeFace's 4-point compromise specifically).
+
+**Lesson**: "don't trust a model author's own landmark names without
+verifying them" was confirmed for the second time. Porting this to a real
+Dart implementation needs the corrected left/right mapping pinned down
+explicitly in code comments and a regression test, or the same mistake is
+easy to repeat. Full debugging write-up:
+[doc/EN/postmortem/2026-08-12-yunet-landmark-order.md](postmortem/2026-08-12-yunet-landmark-order.md).
