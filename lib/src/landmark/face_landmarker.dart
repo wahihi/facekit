@@ -14,9 +14,10 @@
 //   .tflite extracted from the official face_landmarker.task bundle — see
 //   assets/models/face_landmark_478/manifest.json for provenance.
 
-import 'package:flutter/foundation.dart' show kReleaseMode;
+import 'package:flutter/foundation.dart' show debugPrint, kReleaseMode;
 
 import '../core/contracts.dart';
+import '../core/debug_flags.dart';
 import '../core/models.dart';
 import '../image/image_converter.dart';
 import '../inference/model_manifest.dart';
@@ -97,6 +98,12 @@ class MediaPipeFaceLandmarker implements FaceLandmarker {
     );
 
     final cropped = cropFaceImage(image, region);
+    if (kFacekitVerboseDebug) {
+      debugPrint('[MediaPipeFaceLandmarker] DEBUG CROP native=${cropped.width}x${cropped.height} '
+          'resizedTo=${_inputWidth}x$_inputHeight (upsample factor '
+          '${(_inputWidth / cropped.width).toStringAsFixed(2)}x) '
+          'faceBox=${box.width.toStringAsFixed(0)}x${box.height.toStringAsFixed(0)}');
+    }
     final resized = resizeNearest(cropped, _inputWidth, _inputHeight);
 
     final input = prepareInputTensor(

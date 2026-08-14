@@ -19,7 +19,10 @@
 // ordered [outerCorner, upperOuter, upperInner, innerCorner, lowerInner,
 // lowerOuter] to match core/math.dart's eyeAspectRatio() point order.
 
+import 'package:flutter/foundation.dart' show debugPrint;
+
 import '../core/contracts.dart';
+import '../core/debug_flags.dart';
 import '../core/math.dart';
 import '../core/models.dart';
 
@@ -55,6 +58,11 @@ class BlinkLivenessDetector implements LivenessDetector {
 
     final ear = _averageEar(landmarks);
     final closedNow = ear < earThreshold;
+
+    if (kFacekitVerboseDebug) {
+      debugPrint('[BlinkLivenessDetector] DEBUG EAR ear=${ear.toStringAsFixed(3)} '
+          'threshold=$earThreshold closed=$closedNow blinkCount=$_blinkCount');
+    }
 
     if (closedNow && !_eyeClosed) {
       _eyeClosed = true;

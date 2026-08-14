@@ -166,6 +166,123 @@ List<DetectedFace> scaleYunetDetections(
   ];
 }
 
+// ── Centred first-pass crop geometry ────────────────────────────────────────
+// A second, independent mitigation for the same whole-frame-squeeze problem
+// the refinement pass below addresses — see real-device evidence in
+// doc/KR/postmortem/2026-08-14-camera-orientation-and-auto-zoom.md for why
+// this exists *in addition to* refinement rather than instead of it:
+// refinement crops around the first pass's own bbox, so when that bbox is
+// itself imprecise (exactly the small/far-face case it's meant to help),
+// the crop can miss the face and refinement falls back with nothing to show
+// for it — 100% fallback rate across every real-device trigger logged so
+// far. A centred crop needs no prior detection to know where to look, so it
+// can't inherit that particular failure mode.
+
+/// The largest centred square crop of a [imageWidth] × [imageHeight] frame
+/// — side length = min(imageWidth, imageHeight), so it needs no padding and
+/// (for a landscape-shaped frame) discards only the left/right margins.
+/// Squeezing a 480×480 crop into YuNet's 160×160 input is a uniform 3x
+/// squeeze on both axes, versus a whole 720×480 frame's uneven 4.5x/3x
+/// squeeze — more native pixels per face *and* no aspect-ratio distortion,
+/// unconditionally, with no detection-confidence-dependent decision logic
+/// needed at all (unlike auto-zoom or refinement, both of which need a
+/// stable signal from detection to know when/how to act, which is exactly
+/// what's unstable for a small/far face in the first place).
+Rect centerSquareCropRegion(int imageWidth, int imageHeight) {
+  final side = (imageWidth < imageHeight ? imageWidth : imageHeight).toDouble();
+  final left = (imageWidth - side) / 2;
+  final top = (imageHeight - side) / 2;
+  return Rect(left: left, top: top, right: left + side, bottom: top + side);
+}
+
+// ── Second-pass refinement geometry ─────────────────────────────────────────
+// Pure helpers for YuNetDetector's two-pass refinement: resizeNearest
+// squeezes the *whole* camera frame down to inputSize×inputSize, so a face
+// that's only a small fraction of the frame gets very few input pixels —
+// ordinary per-frame camera sensor noise then moves the decoded landmarks by
+// a large fraction of the face's own size. Measured 160-288x higher jitter
+// below ~20% face-width than above it, consistently across three test
+// photos — see doc/KR/postmortem/2026-08-13-landmark-jitter-frame-fill.md.
+// The fix: when the first pass's best face is below that threshold, crop
+// tightly around it and re-detect at native resolution.
+
+/// Face-width fraction of the full frame below which [YuNetDetector.detect]
+/// re-runs detection against a tighter, native-resolution crop around the
+/// first pass's best face.
+const double kRefineFaceFraction = 0.20;
+
+/// Crop margin for the refinement pass: fraction of the bbox's larger side
+/// added on *each* side of the square crop — same convention as
+/// MediaPipeFaceLandmarker's `_cropMarginFraction`
+/// (lib/src/landmark/face_landmarker.dart). 0.5 -> crop side = 2x the
+/// bbox's own larger side, matching the postmortem sweep's margin=2 point:
+/// well inside the low-jitter range measured at margin<=5, with slack for
+/// pass-1's own bbox being imprecise for a face this small.
+const double kRefineCropMarginFraction = 0.5;
+
+/// True if [boundingBox] (in an image [frameWidth] px wide) is small enough
+/// relative to the frame that [YuNetDetector.detect] should refine it with
+/// a second, cropped pass.
+bool needsYunetRefinement(
+  Rect boundingBox,
+  int frameWidth, {
+  double threshold = kRefineFaceFraction,
+}) {
+  if (frameWidth <= 0) return false;
+  return boundingBox.width / frameWidth < threshold;
+}
+
+/// The square, image-bounds-clamped crop region to re-detect within for the
+/// refinement pass — centred on [boundingBox], sized via
+/// [kRefineCropMarginFraction]. Clamping matches `cropFaceImage`'s
+/// (lib/src/image/image_converter.dart) own floor/clamp behaviour exactly,
+/// so callers can crop with `cropFaceImage(image, region)` and trust
+/// `region.left`/`region.top` as the crop's *actual* top-left for mapping
+/// results back afterwards — same pattern as
+/// MediaPipeFaceLandmarker.detectLandmarks.
+Rect yunetRefinementCropRegion(
+  Rect boundingBox,
+  int imageWidth,
+  int imageHeight, {
+  double marginFraction = kRefineCropMarginFraction,
+}) {
+  final side =
+      (boundingBox.width > boundingBox.height ? boundingBox.width : boundingBox.height) *
+          (1 + 2 * marginFraction);
+  final cx = boundingBox.centerX;
+  final cy = boundingBox.centerY;
+
+  final left = (cx - side / 2).floor().clamp(0, imageWidth - 1);
+  final top = (cy - side / 2).floor().clamp(0, imageHeight - 1);
+  final right = (cx + side / 2).ceil().clamp(left + 1, imageWidth);
+  final bottom = (cy + side / 2).ceil().clamp(top + 1, imageHeight);
+  return Rect(
+    left: left.toDouble(),
+    top: top.toDouble(),
+    right: right.toDouble(),
+    bottom: bottom.toDouble(),
+  );
+}
+
+/// Maps a [DetectedFace] decoded in a refinement crop's own local pixel
+/// space back into the original image's coordinates, given the crop's
+/// [region] (as returned by [yunetRefinementCropRegion]).
+DetectedFace mapYunetRefinedFace(DetectedFace localFace, Rect region) {
+  final b = localFace.boundingBox;
+  return DetectedFace(
+    boundingBox: Rect(
+      left: region.left + b.left,
+      top: region.top + b.top,
+      right: region.left + b.right,
+      bottom: region.top + b.bottom,
+    ),
+    landmarks: [
+      for (final p in localFace.landmarks) Point(region.left + p.x, region.top + p.y),
+    ],
+    score: localFace.score,
+  );
+}
+
 // ── Non-Maximum Suppression ───────────────────────────────────────────────────
 // Not shared with blazeface_decoder.dart's _nms/_iou: that one clamps
 // intersection width/height to [0,1] (valid for its normalised coordinate

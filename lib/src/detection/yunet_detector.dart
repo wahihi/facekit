@@ -1,6 +1,7 @@
 // YuNet face detector — implements FaceDetector.
 //
-// Pipeline:
+// Per-pass pipeline (see _detectOnFrame), run against whatever FaceImage
+// it's given:
 //   FaceImage (any size, RGB888)
 //     → resize to 160×160
 //     → raw 0-255 pixels, BGR channel order, no normalisation
@@ -10,16 +11,37 @@
 //       normalisation either — see tool/model_verification/)
 //     → TFLite inference (12 output tensors: cls/obj/bbox/kps × 3 strides)
 //     → decodeYunet (pixel-space [0, 160]) → NMS
-//     → scaleYunetDetections back onto the input image's own width/height
-//     → List<DetectedFace> (pixel coords, matching the input FaceImage)
+//     → scaleYunetDetections back onto the input frame's own width/height
+//     → List<DetectedFace> (pixel coords, matching the input frame)
+//
+// detect() runs the above up to three times, all in service of the same
+// goal: never squeeze more of the frame down to 160×160 than necessary,
+// because that starves a small-in-frame face of input pixels, letting
+// ordinary frame-to-frame sensor noise swing its decoded landmarks (and
+// detection confidence) by a large fraction of the face's own size — see
+// doc/KR/postmortem/2026-08-13-landmark-jitter-frame-fill.md.
+//   1. First pass: a centred square crop of the frame (_detectFirstPass),
+//      not the whole frame — needs no prior detection to know where to
+//      look, so it carries no risk of a bad crop from imprecise data.
+//      Falls back to the whole frame if nothing's found there (e.g. an
+//      off-centre face).
+//   2. If the best face found is still a small fraction of the frame (see
+//      needsYunetRefinement), a second pass re-detects in a tight,
+//      native-resolution crop centred on *that* face's own bbox (see
+//      yunetRefinementCropRegion) and uses the refined result instead.
+//      Unlike step 1, this one does depend on a prior (pass-1) detection to
+//      know where to crop, which historically has made it fall back more
+//      often than not on-device when that bbox was itself imprecise — see
+//      doc/KR/postmortem/2026-08-14-camera-orientation-and-auto-zoom.md.
 //
 // Source:
 //   YuNet (libfacedetection / OpenCV Zoo, MIT licence):
 //   https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet
 
-import 'package:flutter/foundation.dart' show kReleaseMode;
+import 'package:flutter/foundation.dart' show debugPrint, kReleaseMode;
 
 import '../core/contracts.dart';
+import '../core/debug_flags.dart';
 import '../core/models.dart';
 import '../image/image_converter.dart';
 import '../inference/model_manifest.dart';
@@ -176,8 +198,108 @@ class YuNetDetector implements FaceDetector {
 
   @override
   Future<List<DetectedFace>> detect(FaceImage image) async {
+    final passOne = _detectFirstPass(image);
+    if (passOne.isEmpty) return passOne;
+
+    var bestIndex = 0;
+    for (var i = 1; i < passOne.length; i++) {
+      if (passOne[i].score > passOne[bestIndex].score) bestIndex = i;
+    }
+    final best = passOne[bestIndex];
+    final faceFraction = image.width > 0 ? best.boundingBox.width / image.width : 0.0;
+    if (!needsYunetRefinement(best.boundingBox, image.width)) {
+      if (kFacekitVerboseDebug) {
+        debugPrint('[YuNetDetector] DEBUG REFINE skip: face is '
+            '${(faceFraction * 100).toStringAsFixed(1)}% of frame width '
+            '(threshold ${(kRefineFaceFraction * 100).toStringAsFixed(0)}%)');
+      }
+      return passOne;
+    }
+
+    if (kFacekitVerboseDebug) {
+      debugPrint('[YuNetDetector] DEBUG REFINE triggered: face is '
+          '${(faceFraction * 100).toStringAsFixed(1)}% of frame width '
+          '(threshold ${(kRefineFaceFraction * 100).toStringAsFixed(0)}%), '
+          're-detecting in a native-res crop');
+    }
+    final refined = _refine(image, best);
+    if (refined == null) {
+      if (kFacekitVerboseDebug) {
+        // Region logged so a fallback can be checked against where the
+        // face actually was (e.g. a follow-up manual crop of the raw frame)
+        // — every real-device trigger logged so far has fallen back, and
+        // it's not yet confirmed whether that's because the crop is
+        // missing the face (imprecise pass-1 bbox) or something else.
+        final region = yunetRefinementCropRegion(best.boundingBox, image.width, image.height);
+        debugPrint('[YuNetDetector] DEBUG REFINE fallback: no face found in '
+            'the refinement crop, keeping the whole-frame result '
+            '(pass-1 bbox=${_fmtRect(best.boundingBox)}, '
+            'crop region=${_fmtRect(region)})');
+      }
+      return passOne;
+    }
+    if (kFacekitVerboseDebug) {
+      final refinedFraction = image.width > 0 ? refined.boundingBox.width / image.width : 0.0;
+      debugPrint('[YuNetDetector] DEBUG REFINE applied: score '
+          '${best.score.toStringAsFixed(3)} -> ${refined.score.toStringAsFixed(3)}, '
+          'face fraction ${(faceFraction * 100).toStringAsFixed(1)}% -> '
+          '${(refinedFraction * 100).toStringAsFixed(1)}%');
+    }
+
+    return [
+      for (var i = 0; i < passOne.length; i++) i == bestIndex ? refined : passOne[i],
+    ];
+  }
+
+  /// First-pass detection: tries a centred square crop of [image] first
+  /// (see [centerSquareCropRegion]) rather than squeezing the whole frame —
+  /// cheaper on pixels-per-face, and (unlike [_refine]'s bbox-centred crop)
+  /// needs no prior detection to know where to look, so it can't inherit
+  /// refinement's "imprecise bbox → crop misses the face" failure mode.
+  /// Falls back to the whole, uncropped frame if the centred crop finds
+  /// nothing — e.g. a face off-centre enough to fall outside it.
+  List<DetectedFace> _detectFirstPass(FaceImage image) {
+    final region = centerSquareCropRegion(image.width, image.height);
+    final cropped = cropFaceImage(image, region);
+    final inCrop = _detectOnFrame(cropped);
+    if (inCrop.isNotEmpty) {
+      if (kFacekitVerboseDebug) {
+        debugPrint('[YuNetDetector] DEBUG CENTERCROP hit: found in centred '
+            '${_fmtRect(region)} crop');
+      }
+      return [for (final f in inCrop) mapYunetRefinedFace(f, region)];
+    }
+    if (kFacekitVerboseDebug) {
+      debugPrint('[YuNetDetector] DEBUG CENTERCROP fallback: nothing found '
+          'in the centred ${_fmtRect(region)} crop, trying the whole frame');
+    }
+    return _detectOnFrame(image);
+  }
+
+  /// Re-detects within a tight, native-resolution crop around [face]'s box
+  /// (see [yunetRefinementCropRegion]) — the second pass of [detect]'s
+  /// whole-frame-then-refine strategy. Returns null (caller falls back to
+  /// the whole-frame result) if nothing is found in the crop.
+  DetectedFace? _refine(FaceImage image, DetectedFace face) {
+    final region = yunetRefinementCropRegion(face.boundingBox, image.width, image.height);
+    final cropped = cropFaceImage(image, region);
+    final passTwo = _detectOnFrame(cropped);
+    if (passTwo.isEmpty) return null;
+
+    var bestIndex = 0;
+    for (var i = 1; i < passTwo.length; i++) {
+      if (passTwo[i].score > passTwo[bestIndex].score) bestIndex = i;
+    }
+    return mapYunetRefinedFace(passTwo[bestIndex], region);
+  }
+
+  /// Runs one whole-model pass (resize → tensor → inference → decode) on
+  /// [frame], returning detections scaled into [frame]'s own pixel space.
+  /// Used for both the initial whole-frame pass and the refinement pass —
+  /// the only difference between them is what [frame] contains.
+  List<DetectedFace> _detectOnFrame(FaceImage frame) {
     // 1. Resize to inputSize×inputSize
-    final resized = resizeNearest(image, _inputSize, _inputSize);
+    final resized = resizeNearest(frame, _inputSize, _inputSize);
 
     // 2. Build input tensor [1, size, size, 3], raw 0-255 BGR (no normalisation)
     final input = prepareInputTensor(
@@ -224,7 +346,7 @@ class YuNetDetector implements FaceDetector {
       maxFaces: _spec.maxFaces,
     );
 
-    return scaleYunetDetections(pixelSpace, _inputSize, image.width, image.height);
+    return scaleYunetDetections(pixelSpace, _inputSize, frame.width, frame.height);
   }
 
   int _strideForIndex(int index) {
@@ -240,3 +362,7 @@ class YuNetDetector implements FaceDetector {
 
   void dispose() => _runner.close();
 }
+
+String _fmtRect(Rect r) =>
+    '(${r.left.toStringAsFixed(0)},${r.top.toStringAsFixed(0)})-'
+    '(${r.right.toStringAsFixed(0)},${r.bottom.toStringAsFixed(0)})';

@@ -155,4 +155,129 @@ void main() {
       expect(faces, isEmpty);
     });
   });
+
+  group('needsYunetRefinement', () {
+    test('bbox well below the frame-fraction threshold needs refinement', () {
+      // 100px face in a 1000px-wide frame = 10% -- below the 20% default.
+      final box = Rect(left: 450, top: 450, right: 550, bottom: 550);
+      expect(needsYunetRefinement(box, 1000), isTrue);
+    });
+
+    test('bbox well above the frame-fraction threshold does not need refinement', () {
+      // 900px face in a 1000px-wide frame = 90% -- well above 20%.
+      final box = Rect(left: 50, top: 50, right: 950, bottom: 950);
+      expect(needsYunetRefinement(box, 1000), isFalse);
+    });
+
+    test('bbox exactly at the threshold does not need refinement (strict <)', () {
+      final box = Rect(left: 0, top: 0, right: 200, bottom: 200); // 200/1000 = 0.20
+      expect(needsYunetRefinement(box, 1000, threshold: 0.20), isFalse);
+    });
+
+    test('non-positive frame width is treated as never needing refinement', () {
+      final box = Rect(left: 0, top: 0, right: 10, bottom: 10);
+      expect(needsYunetRefinement(box, 0), isFalse);
+    });
+
+    test('a custom threshold is honoured', () {
+      final box = Rect(left: 0, top: 0, right: 300, bottom: 300); // 30% of frame
+      expect(needsYunetRefinement(box, 1000, threshold: 0.20), isFalse);
+      expect(needsYunetRefinement(box, 1000, threshold: 0.50), isTrue);
+    });
+  });
+
+  group('yunetRefinementCropRegion', () {
+    test('centres a square crop at 2x the bbox\'s larger side away from image edges', () {
+      // 100x60 bbox centred at (500, 500), well inside a 1000x1000 image ->
+      // no clamping. side = 100 * (1 + 2*0.5) = 200 (larger side wins).
+      final box = Rect(left: 450, top: 470, right: 550, bottom: 530);
+      final region = yunetRefinementCropRegion(box, 1000, 1000);
+
+      expect(region.width, closeTo(200, 1e-9));
+      expect(region.height, closeTo(200, 1e-9));
+      expect(region.centerX, closeTo(box.centerX, 1e-9));
+      expect(region.centerY, closeTo(box.centerY, 1e-9));
+    });
+
+    test('a taller-than-wide bbox sizes the crop off its height', () {
+      final box = Rect(left: 480, top: 400, right: 520, bottom: 600); // 40w x 200h
+      final region = yunetRefinementCropRegion(box, 1000, 1000);
+      expect(region.width, closeTo(400, 1e-9)); // 200 * (1 + 2*0.5)
+      expect(region.height, closeTo(400, 1e-9));
+    });
+
+    test('clamps to the image bounds instead of extending past them', () {
+      // bbox right at the top-left corner of a small image -- an unclamped
+      // crop would go negative on both axes.
+      final box = Rect(left: 0, top: 0, right: 40, bottom: 40);
+      final region = yunetRefinementCropRegion(box, 200, 200);
+
+      expect(region.left, greaterThanOrEqualTo(0.0));
+      expect(region.top, greaterThanOrEqualTo(0.0));
+      expect(region.right, lessThanOrEqualTo(200.0));
+      expect(region.bottom, lessThanOrEqualTo(200.0));
+      // Still a valid non-empty region.
+      expect(region.width, greaterThan(0.0));
+      expect(region.height, greaterThan(0.0));
+    });
+
+    test('a custom margin fraction changes the crop size', () {
+      final box = Rect(left: 400, top: 400, right: 600, bottom: 600); // 200x200
+      final tight = yunetRefinementCropRegion(box, 2000, 2000, marginFraction: 0.0);
+      final wide = yunetRefinementCropRegion(box, 2000, 2000, marginFraction: 1.0);
+      expect(tight.width, closeTo(200, 1e-9)); // 200 * (1 + 0)
+      expect(wide.width, closeTo(600, 1e-9)); // 200 * (1 + 2)
+    });
+  });
+
+  group('mapYunetRefinedFace', () {
+    test('offsets bbox and landmarks by the crop region\'s top-left, keeps score', () {
+      final region = Rect(left: 300, top: 400, right: 700, bottom: 800);
+      final local = DetectedFace(
+        boundingBox: Rect(left: 10, top: 20, right: 110, bottom: 220),
+        landmarks: const [Point(50, 60), Point(70, 80)],
+        score: 0.87,
+      );
+
+      final mapped = mapYunetRefinedFace(local, region);
+
+      expect(mapped.boundingBox.left, closeTo(310, 1e-9));
+      expect(mapped.boundingBox.top, closeTo(420, 1e-9));
+      expect(mapped.boundingBox.right, closeTo(410, 1e-9));
+      expect(mapped.boundingBox.bottom, closeTo(620, 1e-9));
+      expect(mapped.landmarks[0].x, closeTo(350, 1e-9));
+      expect(mapped.landmarks[0].y, closeTo(460, 1e-9));
+      expect(mapped.landmarks[1].x, closeTo(370, 1e-9));
+      expect(mapped.landmarks[1].y, closeTo(480, 1e-9));
+      expect(mapped.score, closeTo(0.87, 1e-9));
+    });
+  });
+
+  group('centerSquareCropRegion', () {
+    test('a landscape-shaped frame crops to a centred square sized off the shorter side', () {
+      final region = centerSquareCropRegion(720, 480);
+      expect(region.width, closeTo(480, 1e-9));
+      expect(region.height, closeTo(480, 1e-9));
+      expect(region.left, closeTo(120, 1e-9)); // (720-480)/2
+      expect(region.top, closeTo(0, 1e-9));
+      expect(region.right, closeTo(600, 1e-9));
+      expect(region.bottom, closeTo(480, 1e-9));
+    });
+
+    test('a portrait-shaped frame crops off the top/bottom instead', () {
+      final region = centerSquareCropRegion(480, 720);
+      expect(region.width, closeTo(480, 1e-9));
+      expect(region.height, closeTo(480, 1e-9));
+      expect(region.left, closeTo(0, 1e-9));
+      expect(region.top, closeTo(120, 1e-9)); // (720-480)/2
+    });
+
+    test('an already-square frame crops to itself', () {
+      final region = centerSquareCropRegion(300, 300);
+      expect(region.left, closeTo(0, 1e-9));
+      expect(region.top, closeTo(0, 1e-9));
+      expect(region.right, closeTo(300, 1e-9));
+      expect(region.bottom, closeTo(300, 1e-9));
+    });
+  });
 }
