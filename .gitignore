@@ -60,6 +60,7 @@ tool/model_verification/*_tflite_out/
 # dumps, never meant to be committed.
 example/test/log.test
 example/test/log_*.test
+example/log*.txt
 
 # Flutter/Dart/Pub related
 # Libraries should not include pubspec.lock, per https://dart.dev/guides/libraries/private-files#pubspeclock.
