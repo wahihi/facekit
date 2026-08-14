@@ -47,6 +47,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/facekit-example-${{ github.ref_name }}.apk
+          # Tags containing a pre-release identifier (-rc., -beta., -alpha.,
+          # per semver's convention) publish as a GitHub pre-release instead
+          # of a normal Release — shown as "Pre-release" in the UI and
+          # excluded from "Latest release". Lets a version soak on real
+          # devices before it's promoted to stable by re-tagging the same
+          # commit range without the suffix.
+          prerelease: ${{ contains(github.ref_name, '-rc.') || contains(github.ref_name, '-beta.') || contains(github.ref_name, '-alpha.') }}
           # NOTE: this body is static — it's shown as-is on every future
           # tagged release until someone edits it again. Update the
           # "What's new" section before cutting the next tag.
@@ -60,6 +67,63 @@ jobs:
             [doc/EN/installation.md](https://github.com/wahihi/facekit/blob/main/doc/EN/installation.md)
             (also [in Korean](https://github.com/wahihi/facekit/blob/main/doc/KR/installation.md))
             for what it does and how to build it from source instead.
+
+            ## What's new in v0.2.0-rc.1
+
+            **This is a release candidate, not a stable release** — real-device
+            validation is still in progress (see the checklist below).
+
+            Two features aimed at the same problem — a face that's a small
+            fraction of the camera frame gets too few input pixels for
+            YuNet/liveness to stay stable frame-to-frame:
+
+            - **Camera-level auto-zoom**: nudges the camera's own zoom toward
+              keeping the detected face within 30-60% of the frame width,
+              instead of relying on a post-capture software crop (which
+              can't recover detail `ResolutionPreset.medium` already
+              discarded at capture).
+            - **Centred-crop first detection pass**: YuNet's first pass now
+              crops to the frame's largest centred square before detecting,
+              instead of squeezing the whole (non-square) frame — a uniform
+              3x squeeze instead of an uneven 4.5x/3x one, with no prior
+              detection needed to know where to crop. Falls back to the
+              whole frame if a face is held off-centre. A second,
+              bbox-centred refinement pass still runs for faces that remain
+              small after that.
+            - Fixed a camera-orientation bug found along the way: the
+              on-screen preview already followed the live device-orientation
+              sensor, but the frames actually fed to detection used a fixed
+              rotation calibrated for one specific hold orientation only —
+              invisibly wrong whenever that assumption didn't hold, since
+              the preview looked fine regardless.
+
+            Real-device results: 74.6% (53/71) identify-accept rate in
+            portrait, 90% (18/20) in landscape, and the bbox-centred
+            refinement pass succeeding for the first time ever on a real
+            device (previously 0/5).
+
+            **Known gap — liveness is temporarily disabled** in this
+            example app build (`_kLivenessEnabled = false` in
+            `example/lib/main.dart`) to isolate recognition-stability
+            testing from liveness gating. This will be re-enabled before
+            v0.2.0 stable.
+
+            Remaining checklist before promoting to v0.2.0 stable:
+            `portraitDown`/`landscapeLeft` orientations unverified on-device,
+            liveness re-enabled + integration-tested, and the "camera
+            already at max zoom" hint (`_framingHint`) confirmed to actually
+            appear on-device.
+
+            Full write-up:
+            [doc/EN/postmortem/2026-08-14-camera-orientation-and-auto-zoom.md](https://github.com/wahihi/facekit/blob/main/doc/EN/postmortem/2026-08-14-camera-orientation-and-auto-zoom.md)
+            (also [in Korean](https://github.com/wahihi/facekit/blob/main/doc/KR/postmortem/2026-08-14-camera-orientation-and-auto-zoom.md)),
+            plus the landmark-jitter-vs-face-size investigation that started
+            it:
+            [doc/EN/postmortem/2026-08-13-landmark-jitter-frame-fill.md](https://github.com/wahihi/facekit/blob/main/doc/EN/postmortem/2026-08-13-landmark-jitter-frame-fill.md)
+            (also [in Korean](https://github.com/wahihi/facekit/blob/main/doc/KR/postmortem/2026-08-13-landmark-jitter-frame-fill.md)).
+
+            <details>
+            <summary>v0.1.4 — YuNet detector switch</summary>
 
             ## What's new in v0.1.4
 
@@ -103,6 +167,8 @@ jobs:
             investigation:
             [doc/EN/postmortem/2026-08-12-yunet-landmark-order.md](https://github.com/wahihi/facekit/blob/main/doc/EN/postmortem/2026-08-12-yunet-landmark-order.md)
             (also [in Korean](https://github.com/wahihi/facekit/blob/main/doc/KR/postmortem/2026-08-12-yunet-landmark-order.md)).
+
+            </details>
 
             <details>
             <summary>v0.1.3 — pose-quality gate</summary>
