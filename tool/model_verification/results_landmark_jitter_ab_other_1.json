@@ -1,0 +1,66 @@
+{
+  "seed_box_frac_of_source_width": 0.39716992378234856,
+  "points": [
+    {
+      "n": 40,
+      "score_mean": 0.8351428866386413,
+      "score_std": 0.010064433880266444,
+      "eye_dist_mean": 5.98528700178061,
+      "eye_dist_cv": 0.08290259612549788,
+      "landmark_jitter_over_eye_dist": 4.632141658007232,
+      "margin": 12.0,
+      "face_pct_of_crop_width": 8.333333333333334
+    },
+    {
+      "n": 40,
+      "score_mean": 0.8944229289889336,
+      "score_std": 0.007984625779645345,
+      "eye_dist_mean": 10.724545011365175,
+      "eye_dist_cv": 0.061829485023398814,
+      "landmark_jitter_over_eye_dist": 1.0853176499468344,
+      "margin": 8.0,
+      "face_pct_of_crop_width": 12.5
+    },
+    {
+      "n": 40,
+      "score_mean": 0.881155751645565,
+      "score_std": 0.010112879636647415,
+      "eye_dist_mean": 15.598732352649268,
+      "eye_dist_cv": 0.021911311436148603,
+      "landmark_jitter_over_eye_dist": 0.030889664867069306,
+      "margin": 5.0,
+      "face_pct_of_crop_width": 20.0
+    },
+    {
+      "n": 40,
+      "score_mean": 0.9244611352682114,
+      "score_std": 0.002542510130983521,
+      "eye_dist_mean": 22.87049676531689,
+      "eye_dist_cv": 0.039191389774738364,
+      "landmark_jitter_over_eye_dist": 0.024132757339056853,
+      "margin": 3.0,
+      "face_pct_of_crop_width": 33.333333333333336
+    },
+    {
+      "n": 40,
+      "score_mean": 0.928381870687008,
+      "score_std": 0.0023657079498621354,
+      "eye_dist_mean": 34.34325370808792,
+      "eye_dist_cv": 0.04427283108120751,
+      "landmark_jitter_over_eye_dist": 0.02500303807867092,
+      "margin": 1.8,
+      "face_pct_of_crop_width": 55.55555555555556
+    },
+    {
+      "n": 40,
+      "score_mean": 0.9427615255117416,
+      "score_std": 0.0017055518563444355,
+      "eye_dist_mean": 69.58548710311979,
+      "eye_dist_cv": 0.013826085643549955,
+      "landmark_jitter_over_eye_dist": 0.016106868205699922,
+      "margin": 1.1,
+      "face_pct_of_crop_width": 90.9090909090909
+    }
+  ],
+  "widest_over_tightest_jitter_ratio": 287.5879779265843
+}
