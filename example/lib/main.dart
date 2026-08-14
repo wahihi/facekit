@@ -21,10 +21,14 @@
 // Every frame draws a box overlay (see face_overlay.dart) over the detected
 // face, and gates enroll/identify on `BlinkLivenessDetector` passing first —
 // holding up a static photo never blinks, so it never reaches the matcher.
+import 'dart:async' show unawaited;
+import 'dart:math' as math;
+import 'dart:ui' as ui show Rect;
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
-    show Clipboard, ClipboardData, rootBundle;
+    show Clipboard, ClipboardData, DeviceOrientation, rootBundle;
 
 import 'package:facekit/facekit.dart';
 
@@ -35,6 +39,19 @@ import 'face_overlay.dart';
 // Dart const bool is tree-shaken: when false the if-blocks below are
 // eliminated from the compiled binary, identical to C's #ifdef _DEMO_MODE.
 const _kDemoMode = true;
+
+// Temporarily gates out the blink-liveness check entirely (enroll/identify
+// treat every frame as already "passed") — a debugging toggle, not a
+// permanent policy decision. Real-device sessions (log3.txt, 2026-08-14)
+// showed liveness contributing its own friction on top of whatever was
+// making recognition itself unstable (frequent face-lost resets discarding
+// in-progress blink progress, genuine blinks being rare during a framing/
+// zoom test), which made it hard to tell how much of the instability was
+// recognition-quality vs liveness-gating. Flip back to true once
+// recognition stability is confirmed independently. `MediaPipeFaceLandmarker`
+// .detectLandmarks is skipped too while this is off, not just the gate —
+// no point paying for landmark inference nothing consumes.
+const _kLivenessEnabled = false;
 
 // Embedding model in use — swap these two constants to switch models (e.g.
 // back to 'assets/models/arcface_buffalo_l' / 'w600k_r50.tflite', kept in the
@@ -99,6 +116,14 @@ class _RecognitionPageState extends State<RecognitionPage> {
   Size _overlayImageSize = Size.zero;
   String? _matchLabel; // "이름 (유사도 0.xx)" while a live identify match holds
 
+  // Persistent framing tip, shown separately from `_status` (which gets
+  // overwritten by every enroll/identify/liveness message, so a one-time
+  // status string is invisible again the moment anything else happens) —
+  // only non-null while auto-zoom has already maxed out and the face is
+  // still below the target fraction, i.e. the one case auto-zoom genuinely
+  // can't fix on its own and needs the user to physically move.
+  String? _framingHint;
+
   // Latest frame that had a detected face, frozen for the benchmark button —
   // yuv420ToFaceImage always allocates a fresh buffer, so holding this
   // reference across frames is safe (the camera plugin can't mutate it).
@@ -125,6 +150,59 @@ class _RecognitionPageState extends State<RecognitionPage> {
   // forgiving or still resets too often.
   static const _faceLossGraceMs = 500;
   int? _faceLostSinceMs;
+
+  // Auto-zoom: resizeNearest squeezes the *whole* camera frame down to
+  // YuNet's fixed 160x160 input, so a face that's only a small fraction of
+  // the frame gets very few input pixels, which lets ordinary frame-to-frame
+  // camera noise swing decoded landmarks by a large fraction of the face's
+  // own size — measured 160-288x higher jitter below ~20% face-width than
+  // above it (doc/KR/postmortem/2026-08-13-landmark-jitter-frame-fill.md).
+  // Camera-level zoom (CameraController.setZoomLevel) fixes this more
+  // fundamentally than any post-capture software crop can: ResolutionPreset
+  // .medium already caps capture at a fraction of the sensor's native
+  // resolution, so a crop *after* that capture can't recover detail the
+  // camera driver already discarded — zooming the *capture* itself asks the
+  // driver for a tighter, still-native-resolution-backed region instead.
+  //
+  // Target range is deliberately a band, not a single point: the postmortem
+  // sweep's jitter was already low and roughly flat across ~20-90% face
+  // width, so there's no benefit to hunting for an exact fraction, only a
+  // need to stay out of the unstable <20% tail. The band's lower edge sits
+  // just above that tail with some margin; the upper edge avoids the very-
+  // close-range false rejections seen in real device logs (log4.txt), which
+  // looked more like focus/framing artefacts than a benefit of zooming
+  // further in.
+  //
+  // First real-device run (log2.txt, 2026-08-14) oscillated hard instead of
+  // settling: zoom bounced 0.90<->1.20<->1.50 repeatedly and faceFraction
+  // swung between ~25% and ~70-78% — overshooting the target band in *both*
+  // directions every single time, never landing inside it — and the
+  // rejected-match frames clustered almost exactly inside that oscillating
+  // stretch (a calmer stretch elsewhere in the same log had 8 consecutive
+  // accepted matches). Two compounding causes: (1) 400ms was shorter than
+  // this device's actual zoom-settle latency, so the next frame's
+  // faceFraction reading still reflected the *previous* zoom level, making
+  // each correction react to stale data and overshoot; (2) getMinZoomLevel()
+  // returned <1.0 (0.8958...) on this device, meaning the low end of the
+  // range crosses into an ultra-wide *physical lens switch*, which is a
+  // discontinuous FOV jump, not smooth zoom — a 33% zoom-level increase
+  // (0.90->1.20) produced a >2x faceFraction jump because it crossed that
+  // seam. Fixed by clamping the zoom floor to 1.0 (never cross the lens
+  // seam), lengthening the cooldown well past the observed settle lag,
+  // shrinking the step so any residual overshoot is smaller, and requiring
+  // a few *consecutive* out-of-band readings before reacting at all (a
+  // single noisy frame shouldn't retrigger a hardware zoom call).
+  static const _targetFaceFractionLow = 0.30;
+  static const _targetFaceFractionHigh = 0.60;
+  static const _zoomStep = 0.15; // in the controller's own zoom-level units
+  static const _zoomCooldownMs = 900; // longer than the observed settle lag
+  static const _zoomOutOfRangeStreakThreshold = 3;
+  double _minZoom = 1.0;
+  double _maxZoom = 1.0;
+  double _currentZoom = 1.0;
+  int? _lastZoomAdjustMs;
+  int _zoomOutOfRangeStreak = 0;
+  int _zoomOutOfRangeDirection = 0; // -1 too small, +1 too big, 0 none yet
 
   // Lazily built only when the NNAPI toggle is first used — a second
   // detector/embedder pair pointed at the same models but with the NNAPI
@@ -185,7 +263,14 @@ class _RecognitionPageState extends State<RecognitionPage> {
       await _initCamera(_lensDirection);
 
       setState(() {
-        _status = '준비 완료 — 카메라를 가로로 들고 "등록"을 눌러보세요.';
+        // Framing is now handled automatically (auto-zoom nudges toward a
+        // safe face-to-frame ratio; the ML rotation path adapts to whatever
+        // orientation the phone is actually held in) — this no longer needs
+        // to tell the user to hold it any particular way. If auto-zoom ever
+        // maxes out and still can't get the face big enough, `_framingHint`
+        // (a persistent hint that survives status-text overwrites, unlike
+        // this one-shot message) picks up the slack.
+        _status = '준비 완료 — "등록"을 눌러보세요.';
       });
       if (_kDemoMode) await Future.delayed(const Duration(seconds: 2));
     } catch (e) {
@@ -224,6 +309,21 @@ class _RecognitionPageState extends State<RecognitionPage> {
       imageFormatGroup: ImageFormatGroup.yuv420,
     );
     await controller.initialize();
+    // Clamped to 1.0: some devices report getMinZoomLevel() below 1.0,
+    // which crosses into a physical ultra-wide lens switch (a discontinuous
+    // FOV jump, not smooth zoom) — see _targetFaceFractionLow's doc comment.
+    final rawMinZoom = await controller.getMinZoomLevel();
+    _minZoom = math.max(1.0, rawMinZoom);
+    _maxZoom = await controller.getMaxZoomLevel();
+    _currentZoom = _minZoom;
+    debugPrint(
+      '[Zoom] init: lensDirection=$direction rawMinZoom=$rawMinZoom '
+      'clampedMinZoom=$_minZoom maxZoom=$_maxZoom '
+      'capable=${_maxZoom > _minZoom}',
+    );
+    await controller.setZoomLevel(_currentZoom);
+    _lastZoomAdjustMs = null;
+    _zoomOutOfRangeStreak = 0;
     await controller.startImageStream(_onFrame);
 
     if (!mounted) return;
@@ -272,34 +372,60 @@ class _RecognitionPageState extends State<RecognitionPage> {
 
   /// Camera sensors are mounted independently of how the phone is held, so
   /// the raw YUV buffer above is in the sensor's native (usually landscape)
-  /// orientation regardless of device orientation. This app is portrait-only
-  /// (no UI rotation handling), so — assuming the device is held upright —
-  /// the fixed rotation needed is entirely determined by the active camera's
-  /// `sensorOrientation`, adjusted for lens facing.
+  /// orientation regardless of device orientation.
   ///
-  /// The textbook ML Kit-style front-camera formula `(360 - sensorOrientation)
-  /// % 360` does NOT hold here: on a real Pixel 7 (front camera,
-  /// sensorOrientation=270) it produced a 90°-rotated crop (verified by
-  /// reconstructing raw landmark geometry from a device debug dump — eyes
-  /// came out separated vertically instead of horizontally, and un-rotating
-  /// by one more quarter turn fixed both the eye axis and the nose/mouth
-  /// up-down order). The +90° adjustment below is empirically calibrated to
-  /// that measurement, not re-derived from camera theory. The back-camera
-  /// branch is unchanged and untested — this app is only ever run with the
-  /// front camera in practice.
-  bool _quarterTurnsLogged = false;
-
-  int _cameraQuarterTurns() {
+  /// [_baseQuarterTurns] below is a *fixed* rotation, empirically calibrated
+  /// on a real Pixel 7 (front camera, sensorOrientation=270) to produce an
+  /// upright frame when the device is held in [DeviceOrientation.portraitUp]
+  /// — the textbook ML Kit-style front-camera formula `(360 -
+  /// sensorOrientation) % 360` does NOT hold here (it produced a
+  /// 90°-rotated crop, verified by reconstructing raw landmark geometry
+  /// from a device debug dump: eyes came out separated vertically instead
+  /// of horizontally). The +90° adjustment is empirically calibrated to
+  /// that one measurement, not re-derived from camera theory.
+  ///
+  /// That fixed value alone is only correct for *that one* physical
+  /// orientation, though — this app used to assume the device was always
+  /// held portraitUp and never re-checked, which is a real bug: the ML
+  /// path (this function) had no way to know if that assumption held,
+  /// while `CameraPreview`/`face_overlay.dart`'s `quarterTurnsForOrientation`
+  /// already reads the *live* `CameraValue.deviceOrientation` to keep the
+  /// on-screen preview correctly upright regardless of how the phone is
+  /// actually held right now. That means a user could hold the device in
+  /// any orientation, see a perfectly normal-looking preview (since that
+  /// path already compensates), while the ML pipeline silently received a
+  /// rotated frame underneath — degrading detection/landmark/liveness
+  /// quality with no visible symptom pointing at "orientation". See
+  /// doc/KR/postmortem/2026-08-14-camera-orientation-and-auto-zoom.md.
+  ///
+  /// Fix: combine the fixed base calibration (still exactly correct for
+  /// portraitUp, so that case is unchanged/non-regressing) with the same
+  /// live-orientation delta table `quarterTurnsForOrientation` already
+  /// uses for the preview, so the ML path stays correctly upright in any
+  /// held orientation, not just the one it happened to be calibrated in.
+  /// The back-camera branch is unchanged and untested — this app is only
+  /// ever run with the front camera in practice.
+  int get _baseQuarterTurns {
     final sensorOrientation = _controller?.description.sensorOrientation ?? 0;
     final degrees = _lensDirection == CameraLensDirection.front
         ? (450 - sensorOrientation) % 360
         : sensorOrientation % 360;
-    final turns = degrees ~/ 90;
-    if (!_quarterTurnsLogged) {
-      _quarterTurnsLogged = true;
+    return degrees ~/ 90;
+  }
+
+  int? _loggedQuarterTurns;
+
+  int _cameraQuarterTurns() {
+    final liveOrientation =
+        _controller?.value.deviceOrientation ?? DeviceOrientation.portraitUp;
+    final orientationDelta = quarterTurnsForOrientation(liveOrientation);
+    final turns = (_baseQuarterTurns + orientationDelta) % 4;
+    if (_loggedQuarterTurns != turns) {
+      _loggedQuarterTurns = turns;
       debugPrint(
-        '[TEMP DEBUG] _cameraQuarterTurns: lensDirection=$_lensDirection '
-        'sensorOrientation=$sensorOrientation degrees=$degrees turns=$turns',
+        '[_cameraQuarterTurns] lensDirection=$_lensDirection '
+        'baseQuarterTurns=$_baseQuarterTurns liveOrientation=$liveOrientation '
+        'orientationDelta=$orientationDelta turns=$turns',
       );
     }
     return turns;
@@ -318,11 +444,20 @@ class _RecognitionPageState extends State<RecognitionPage> {
     if (pipeline == null || landmarker == null) return;
 
     _busy = true;
+    final frameStopwatch = Stopwatch()..start();
     try {
       final image = _toFaceImage(frame);
       if (image == null) return;
 
+      // Tracked on every frame (not just ones with a face) so the framing
+      // guide has a size to draw against before the very first detection.
+      final newImageSize = Size(image.width.toDouble(), image.height.toDouble());
+      if (_overlayImageSize != newImageSize) {
+        setState(() => _overlayImageSize = newImageSize);
+      }
+
       final faces = await pipeline.detector.detect(image);
+      debugPrint('[Timing] detect() (onFrame pass): ${frameStopwatch.elapsedMilliseconds}ms');
       final face = faces.isEmpty
           ? null
           : faces.reduce((a, b) => a.score >= b.score ? a : b);
@@ -347,6 +482,7 @@ class _RecognitionPageState extends State<RecognitionPage> {
           _overlayLandmarks = null;
           _livenessState = LivenessState.pending;
           _matchLabel = null;
+          _framingHint = null;
         });
         if (_identifying) _setStatus('얼굴 없음');
         return;
@@ -358,11 +494,16 @@ class _RecognitionPageState extends State<RecognitionPage> {
         );
         _loggedHasFace = true;
       }
+      _maybeAdjustZoom(face.boundingBox.width / image.width);
 
       _lastFaceImage = image;
 
-      final landmarks = await landmarker.detectLandmarks(image, face);
-      final liveness = landmarks == null
+      final landmarks = _kLivenessEnabled
+          ? await landmarker.detectLandmarks(image, face)
+          : null;
+      final liveness = !_kLivenessEnabled
+          ? const LivenessResult(state: LivenessState.passed)
+          : landmarks == null
           ? const LivenessResult(state: LivenessState.pending)
           : _liveness.update(landmarks, DateTime.now().millisecondsSinceEpoch);
       if (_loggedLivenessState != liveness.state) {
@@ -376,10 +517,6 @@ class _RecognitionPageState extends State<RecognitionPage> {
       setState(() {
         _overlayFace = face;
         _overlayLandmarks = landmarks;
-        _overlayImageSize = Size(
-          image.width.toDouble(),
-          image.height.toDouble(),
-        );
         _livenessState = liveness.state;
       });
 
@@ -396,6 +533,7 @@ class _RecognitionPageState extends State<RecognitionPage> {
         _pendingEnrollName = null;
         _liveness.reset();
         final embedding = await pipeline.enroll(image);
+        debugPrint('[Timing] pipeline.enroll() done: ${frameStopwatch.elapsedMilliseconds}ms total');
         if (embedding == null) {
           _setStatus('얼굴을 찾지 못했어요. 카메라에 얼굴이 잘 보이게 해주세요.');
         } else {
@@ -405,6 +543,7 @@ class _RecognitionPageState extends State<RecognitionPage> {
         }
       } else if (_identifying) {
         final result = await pipeline.identify(image, _gallery);
+        debugPrint('[Timing] pipeline.identify() done: ${frameStopwatch.elapsedMilliseconds}ms total');
         if (result == null) {
           setState(() => _matchLabel = null);
           _setStatus('얼굴 없음');
@@ -421,6 +560,7 @@ class _RecognitionPageState extends State<RecognitionPage> {
     } catch (e) {
       _setStatus('오류: $e');
     } finally {
+      debugPrint('[Timing] onFrame total: ${frameStopwatch.elapsedMilliseconds}ms');
       _busy = false;
     }
   }
@@ -428,6 +568,82 @@ class _RecognitionPageState extends State<RecognitionPage> {
   void _setStatus(String text) {
     if (!mounted) return;
     setState(() => _status = text);
+  }
+
+  /// Nudges the camera's optical/hybrid zoom toward keeping the detected
+  /// face's width within [_targetFaceFractionLow, _targetFaceFractionHigh]
+  /// of the frame — see the field doc comment above for why this matters
+  /// more than any post-capture software crop, and for what went wrong the
+  /// first time (log2.txt's oscillation) that the streak/cooldown/step
+  /// tuning below is responding to. A single out-of-band frame doesn't
+  /// trigger anything — [_zoomOutOfRangeStreakThreshold] consecutive frames
+  /// in the *same* direction are required first, so one noisy reading can't
+  /// retrigger a hardware zoom call while a previous one is still settling.
+  ///
+  /// Also drives [_framingHint]: zoom alone can't help once it's already
+  /// maxed out, so that's the one case left for the user to fix by
+  /// physically moving closer — surfaced as a persistent hint rather than
+  /// a one-shot status message (see [_framingHint]'s doc comment).
+  void _maybeAdjustZoom(double faceFraction) {
+    final controller = _controller;
+    final capable = controller != null && _maxZoom > _minZoom;
+    debugPrint(
+      '[Zoom] check: faceFraction=${faceFraction.toStringAsFixed(3)} '
+      'capable=$capable minZoom=$_minZoom maxZoom=$_maxZoom '
+      'currentZoom=$_currentZoom streak=$_zoomOutOfRangeStreak '
+      'streakDirection=$_zoomOutOfRangeDirection',
+    );
+    if (!capable) return;
+
+    final tooFarEvenAtMaxZoom =
+        faceFraction < _targetFaceFractionLow && _currentZoom >= _maxZoom;
+    _setFramingHint(
+      tooFarEvenAtMaxZoom ? '카메라에 조금 더 가까이 와주세요 (줌 최대)' : null,
+    );
+
+    // +1 = zoom in (face too small), -1 = zoom out (face too big). This sign
+    // was inverted in an earlier revision (log3.txt, 2026-08-14) — zoom kept
+    // climbing past 95% face-width instead of backing off, because "too big"
+    // mapped to +1 (zoom in further) instead of -1 (zoom out).
+    final direction = faceFraction < _targetFaceFractionLow
+        ? 1
+        : faceFraction > _targetFaceFractionHigh
+        ? -1
+        : 0;
+    if (direction == 0 || direction != _zoomOutOfRangeDirection) {
+      _zoomOutOfRangeStreak = direction == 0 ? 0 : 1;
+      _zoomOutOfRangeDirection = direction;
+    } else {
+      _zoomOutOfRangeStreak++;
+    }
+    if (direction == 0 || _zoomOutOfRangeStreak < _zoomOutOfRangeStreakThreshold) {
+      return;
+    }
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (_lastZoomAdjustMs != null && now - _lastZoomAdjustMs! < _zoomCooldownMs) {
+      return;
+    }
+
+    final next = (_currentZoom + direction * _zoomStep).clamp(_minZoom, _maxZoom);
+    if (next == _currentZoom) return;
+
+    _currentZoom = next;
+    _lastZoomAdjustMs = now;
+    _zoomOutOfRangeStreak = 0;
+    debugPrint(
+      '[AutoZoom] faceFraction=${faceFraction.toStringAsFixed(3)} -> '
+      'zoom=${next.toStringAsFixed(2)} (range $_minZoom-$_maxZoom)',
+    );
+    // Fire-and-forget: awaiting here would hold _busy for the platform
+    // channel round-trip, dropping camera frames for no benefit — the next
+    // frame just reads whatever zoom level is in effect by then.
+    unawaited(controller.setZoomLevel(next));
+  }
+
+  void _setFramingHint(String? hint) {
+    if (_framingHint == hint || !mounted) return;
+    setState(() => _framingHint = hint);
   }
 
   /// Lazily builds a second detector+embedder pair pointed at the same model
@@ -524,6 +740,32 @@ class _RecognitionPageState extends State<RecognitionPage> {
     super.dispose();
   }
 
+  /// Static framing guide, in image space — the centred square
+  /// [YuNetDetector]'s first pass now crops to (see
+  /// `centerSquareCropRegion` in facekit), shrunk by [_guideRegionMargin]
+  /// so a user who's slightly off still lands inside the actual crop
+  /// rather than right on its edge. Drawn regardless of whether a face is
+  /// currently detected — see [FaceOverlayPainter.guideRegion].
+  static const _guideRegionMargin = 0.85;
+
+  ui.Rect? get _guideRegion {
+    if (_overlayImageSize.isEmpty) return null;
+    // centerSquareCropRegion returns facekit's own Rect (core/models.dart) —
+    // converted to dart:ui's Rect below since that's what FaceOverlayPainter
+    // (a Canvas/CustomPainter type) expects.
+    final full = centerSquareCropRegion(
+      _overlayImageSize.width.round(),
+      _overlayImageSize.height.round(),
+    );
+    final shrink = full.width * (1 - _guideRegionMargin) / 2;
+    return ui.Rect.fromLTRB(
+      full.left + shrink,
+      full.top + shrink,
+      full.right - shrink,
+      full.bottom - shrink,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
@@ -552,8 +794,19 @@ class _RecognitionPageState extends State<RecognitionPage> {
                         face: _overlayFace,
                         landmarks: _overlayLandmarks,
                         imageSize: _overlayImageSize,
-                        quarterTurns: quarterTurnsForController(controller),
+                        // `_overlayImageSize` is already the *orientation-
+                        // corrected* FaceImage's size (rotated by
+                        // _cameraQuarterTurns(), which now folds in live
+                        // deviceOrientation) — it's already upright, same as
+                        // what CameraPreview itself already displays, so no
+                        // further rotation is needed here. Using
+                        // quarterTurnsForController(controller) (raw-sensor-
+                        // space delta) on top of an already-corrected image
+                        // would double-rotate the overlay away from the face
+                        // for any non-portraitUp hold.
+                        quarterTurns: 0,
                         mirror: _lensDirection == CameraLensDirection.front,
+                        guideRegion: _guideRegion,
                         boxColor: _livenessState == LivenessState.passed
                             ? Colors.greenAccent
                             : Colors.amber,
@@ -577,6 +830,17 @@ class _RecognitionPageState extends State<RecognitionPage> {
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
+                if (_framingHint != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    _framingHint!,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.orange.shade800,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 TextField(
                   controller: _nameController,

@@ -105,6 +105,12 @@ class FaceOverlayPainter extends CustomPainter {
   final Color boxColor;
   final String? label;
 
+  /// Static framing guide, in image space — drawn regardless of whether a
+  /// face is currently detected, so the user has something to aim for even
+  /// before the first detection. Null hides it (e.g. before the frame size
+  /// is known yet).
+  final Rect? guideRegion;
+
   FaceOverlayPainter({
     required this.face,
     required this.landmarks,
@@ -113,6 +119,7 @@ class FaceOverlayPainter extends CustomPainter {
     required this.mirror,
     required this.boxColor,
     this.label,
+    this.guideRegion,
   });
 
   Offset _map(double x, double y, Size previewBoxSize) => mapImagePointToPreview(
@@ -126,6 +133,36 @@ class FaceOverlayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final guide = guideRegion;
+    if (guide != null && !imageSize.isEmpty) {
+      final guideRect = Rect.fromPoints(
+        _map(guide.left, guide.top, size),
+        _map(guide.right, guide.bottom, size),
+      );
+      final guidePaint = Paint()
+        ..color = Colors.white.withValues(alpha: 0.7)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2;
+      _drawDashedRect(canvas, guideRect, guidePaint);
+
+      final hint = TextPainter(
+        text: const TextSpan(
+          text: '이 안에 얼굴을 맞춰주세요',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            backgroundColor: Color(0xAA000000),
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: guideRect.width);
+      hint.paint(
+        canvas,
+        Offset(guideRect.left + (guideRect.width - hint.width) / 2, guideRect.top - hint.height - 4),
+      );
+    }
+
     final detected = face;
     if (detected == null || imageSize.isEmpty) return;
 
@@ -175,7 +212,30 @@ class FaceOverlayPainter extends CustomPainter {
       oldDelegate.label != label ||
       oldDelegate.boxColor != boxColor ||
       oldDelegate.quarterTurns != quarterTurns ||
-      oldDelegate.mirror != mirror;
+      oldDelegate.mirror != mirror ||
+      oldDelegate.guideRegion != guideRegion;
+}
+
+/// Dashed rectangle outline — distinguishes the static framing guide from
+/// the live face-detection box (solid line), so the two aren't confused
+/// even when they briefly overlap.
+void _drawDashedRect(Canvas canvas, Rect rect, Paint paint, {double dashLength = 8, double gapLength = 5}) {
+  void dashedLine(Offset start, Offset end) {
+    final total = (end - start).distance;
+    if (total == 0) return;
+    final direction = (end - start) / total;
+    var covered = 0.0;
+    while (covered < total) {
+      final segmentEnd = (covered + dashLength).clamp(0.0, total);
+      canvas.drawLine(start + direction * covered, start + direction * segmentEnd, paint);
+      covered += dashLength + gapLength;
+    }
+  }
+
+  dashedLine(rect.topLeft, rect.topRight);
+  dashedLine(rect.topRight, rect.bottomRight);
+  dashedLine(rect.bottomRight, rect.bottomLeft);
+  dashedLine(rect.bottomLeft, rect.topLeft);
 }
 
 /// Convenience for reading the quarter-turns to use for a given controller's
