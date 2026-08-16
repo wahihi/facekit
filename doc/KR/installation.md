@@ -355,11 +355,14 @@ EmbedderAdapter adapterForFamily(String family) {
 
 | 모델 | 라이선스 | 출처 |
 |---|---|---|
-| BlazeFace short-range (검출) | Apache 2.0 | https://github.com/google/mediapipe |
+| YuNet 160×160 (검출, 기본값) | MIT | https://github.com/opencv/opencv_zoo — onnx2tf로 입력 shape만 160×160 고정으로 재변환(가중치·구조는 원본과 동일) |
+| BlazeFace short-range (검출, 폴백) | Apache 2.0 | https://github.com/google/mediapipe |
 | MediaPipe Face Landmarker (478점, 라이브니스용) | Apache 2.0 | https://github.com/google/mediapipe |
 | AuraFace (glintr100/ResNet100, 기본 임베딩) | Apache 2.0 | [fal/AuraFace-v1](https://huggingface.co/fal/AuraFace-v1) — `.tflite` 가중치 자체는 용량 때문에 리포에 커밋하지 않고 `tool/fetch_models.sh`로 GitHub Release에서 받음 (라이선스 문제로 뺀 게 아님) |
 
-셋 다 상업적 사용이 가능한 라이선스라 별도 BYOM 절차 없이 그대로 동작합니다.
+모두 상업적 사용이 가능한 라이선스라 별도 BYOM 절차 없이 그대로 동작합니다.
+기본 검출기가 BlazeFace가 아니라 YuNet인 이유(입 랜드마크가 1점뿐이라 5점 정렬을
+채우지 못해 정확도가 떨어졌던 문제)는 [README](README.md#왜-yunet이-기본-검출기인가) 참고.
 `arcface_buffalo_l` 등 부록 A에서 다루는 추가 모델들은 대부분 비상업 연구용
 라이선스라 직접 받아와야 합니다.
 

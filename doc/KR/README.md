@@ -21,15 +21,50 @@
 카메라(또는 갤러리 이미지) → 얼굴 검출 → 정렬 → 임베딩 → 매칭까지, 얼굴인식 파이프라인
 전 단계를 단말기 안에서(네트워크 호출 없이) 처리합니다.
 
-- **검출**: BlazeFace (MediaPipe, Apache 2.0) — SDK에 동봉, 별도 다운로드 불필요
+- **검출**: YuNet (OpenCV Zoo / libfacedetection, MIT) — SDK에 동봉, 별도 다운로드
+  불필요. **5점 랜드마크(양 눈·코·양 입꼬리)를 네이티브로 출력**하므로 ArcFace 표준
+  정렬을 타협 없이 그대로 쓸 수 있습니다. BlazeFace(MediaPipe, Apache 2.0)도 계속
+  동봉되지만 폴백입니다 — 왜 기본에서 내렸는지는 아래
+  [왜 YuNet이 기본 검출기인가](#왜-yunet이-기본-검출기인가) 참고
 - **임베딩**: 모델 교체 가능 구조 — 기본값으로 **AuraFace**(Apache 2.0) 동봉, 그 외
   ArcFace / AdaFace / MobileFaceNet / FaceNet 어댑터도 내장(가중치는 BYOM, 직접 준비)
 - **매칭**: 코사인 유사도 기반, manifest의 임계값으로 정/오답 판정
-- **라이브니스(Free)**: 눈 깜빡임(Blink, EAR) 검출 — 정지된 사진을 들이대면 통과하지 못함
+- **라이브니스(Free)**: 눈 깜빡임(Blink, EAR) 검출 — **현재 example 앱에서는 기본
+  비활성화 상태입니다**([#4](https://github.com/wahihi/facekit/issues/4), 아래
+  라이브니스 절 참고)
 - **온디바이스 전용**: 임베딩 등 무거운 추론은 별도 isolate에서 실행해 UI를 막지 않음
 
 자세한 설계는 [doc/EN/architecture.md](../EN/architecture.md) /
 [doc/KR/architecture.md](architecture.md)에 있습니다.
+
+## 왜 YuNet이 기본 검출기인가
+
+처음에는 BlazeFace short-range를 기본 검출기로 썼습니다. 문제는 랜드마크였습니다 —
+BlazeFace가 주는 6개 키포인트에는 **입이 중앙 1점**밖에 없어서, ArcFace 계열 임베더가
+전제하는 표준 5점 정렬(양 눈·코·**양 입꼬리**)을 채울 수 없었습니다. `AffineAligner`는
+이를 4점으로 타협해 정렬했고, 그 왜곡이 인식 정확도를 그대로 갉아먹었습니다.
+
+실측이 이를 확인해줍니다. 같은 LFW 200쌍에서:
+
+| 정렬 조건 | AuraFace clean EER | 임계값 |
+|---|---|---|
+| 정렬 미적용(리사이즈만) | 10.0% | 0.30 |
+| YuNet 5점 네이티브 정렬 | **2.5%** | **0.211** |
+
+인식률이 낮을 때 임계값을 낮춰 대응하려던 시도는 전부 실패했고(0.30→0.25→0.27 이력은
+[doc/KR/adaface_verification.md](adaface_verification.md#threshold-미세조정을-포기하고-포즈-게이트로-전환-2026-08-11-계속)
+참고),
+실제 원인은 정렬 입력이 부족한 것이었습니다. **임계값보다 정렬 품질이 먼저**라는 게
+이 프로젝트에서 얻은 가장 값비싼 교훈입니다.
+
+검출기 후보 중 SCRFD(InsightFace)도 5점을 네이티브로 주지만, 코드가 Apache 2.0인 것과
+별개로 상위 저장소가 학습 데이터와 그 데이터로 학습된 모델을 비상업 연구 전용으로
+명시하고 있고 학습 데이터(WIDER FACE)도 비상업 라이선스여서 채택하지 않았습니다.
+YuNet은 배포처(OpenCV Zoo)가 가중치를 MIT로 명시합니다. 전체 경위는
+[2026-08-12 포스트모템](postmortem/2026-08-12-yunet-landmark-order.md).
+
+BlazeFace는 삭제하지 않고 폴백으로 남겨뒀습니다(`BlazeFaceDetector`, 가중치도 동봉).
+YuNet이 특정 기기에서 문제를 일으키면 갈아끼울 수 있습니다.
 
 ## 빠른 시작
 
@@ -41,12 +76,12 @@ BYOM 모델 배치, 빌드, 기기 설치까지 처음부터 따라할 수 있�
 ```dart
 import 'package:facekit/facekit.dart';
 
-// 1) 검출기 — SDK에 동봉된 모델이라 바로 로드 가능
+// 1) 검출기 — SDK에 동봉된 모델이라 바로 로드 가능 (YuNet, MIT)
 final detectorManifest = ModelManifest.fromJsonString(
-  await rootBundle.loadString('packages/facekit/assets/models/blazeface_short/manifest.json'),
+  await rootBundle.loadString('packages/facekit/assets/models/yunet_160/manifest.json'),
 );
-final detector = await BlazeFaceDetector.fromAsset(
-  tfliteAssetPath: 'packages/facekit/assets/models/blazeface_short/face_detection_short_range.tflite',
+final detector = await YuNetDetector.fromAsset(
+  tfliteAssetPath: 'packages/facekit/assets/models/yunet_160/yunet_160.tflite',
   manifest: detectorManifest,
 );
 
@@ -118,11 +153,36 @@ Galaxy S25(Snapdragon 8 Elite)에서는 ArcFace 기준 NNAPI가 평균은 ~15ms 
 유지가 안전합니다. 위 두 표는 빌드 모드 자체가 다르니(이유는 각 문서 참고),
 둘 사이 배율은 엄밀한 비교가 아니라 참고치로만 보세요.
 
-정확도(LFW 200쌍 기준 EER)는 ArcFace 8.5% / AdaFace 2.0% / AuraFace 10.0%이며,
-저화질 조건에서는 AdaFace가 가장 강건합니다(자세한 수치와 AuraFace의
-`input.normalize` 버그 경위는 [doc/KR/adaface_verification.md](adaface_verification.md) 참고).
+정확도(LFW 200쌍 기준 EER)는 **AuraFace 2.5%**(YuNet 5점 네이티브 정렬 적용,
+임계값 0.211)입니다. ArcFace 8.5% / AdaFace 2.0% / AuraFace 10.0%는 **정렬을 적용하지
+않고(리사이즈만) 측정한 값**이라 AuraFace의 두 수치를 나란히 비교하면 안 됩니다.
+ArcFace는 같은 파이썬 검증 과정에서 YuNet 5점 네이티브 정렬 기준으로도 재측정된 적이
+있고 AuraFace와 정확히 동률인 2.5%로 나왔지만([2026-08-12 포스트모템](postmortem/2026-08-12-yunet-landmark-order.md)
+참고), 실제 배포되는 `arcface_buffalo_l`의 `manifest.json` 임계값은 아직 그 수치를
+반영하지 않은 상태입니다(여전히 정렬 미적용 기준인 `0.26`). AdaFace는 YuNet 정렬
+기준으로 재측정된 적이 아예 없습니다. 저화질 조건에서는
+AdaFace가 가장 강건합니다(자세한 수치와 AuraFace의 `input.normalize` 버그 경위는
+[doc/KR/adaface_verification.md](adaface_verification.md) 참고).
+
+**주의**: 위 벤치마크 표의 `검출(BlazeFace)` 열은 검출기 교체(2026-08-12) 이전에
+측정한 값입니다. YuNet 기준 실기기 검출 시간은 아직 재측정하지 않았습니다.
 
 ## 라이브니스 / Free·Pro 경계
+
+> ⚠️ **현재 example 앱에서 라이브니스는 기본 비활성화 상태입니다**
+> (`example/lib/main.dart`의 `_kLivenessEnabled = false`). 2026-08-16 실기기
+> 재검증에서 두 가지 문제를 확인했기 때문입니다: (1) 매 프레임 478점 랜드마크
+> 추론이 프레임 처리 시간을 중앙값 55ms → 186ms로 늘려 실제 깜빡임을 놓치게
+> 만들고, (2) `LivenessState.passed`가 `identify()` 시도마다 재검증되지 않고
+> 프레임 안의 얼굴이 누구인지와도 무관해서, 통과 직후 다른 사람의 모니터 사진이
+> 라이브니스 게이트를 그대로 지나갔습니다(임베딩 유사도에서만 거부됨). 두 번째는
+> UX가 아니라 위조 방어 자체의 결함이라 임시 패치 대신
+> [#4](https://github.com/wahihi/facekit/issues/4)로 공개 추적 중이며,
+> **해결 전까지 이 SDK가 사진 위조를 막는다고 주장하지 않습니다.**
+> 배포된 시연 영상은 라이브니스가 활성화된 상태에서 촬영된 것이라, 지금 clone해
+> 빌드하면 영상의 사진 차단 장면은 재현되지 않습니다.
+
+아래는 활성화했을 때의 동작과 설계상 한계입니다.
 
 이 저장소(Free)에는 **눈 깜빡임(Blink) 기반 라이브니스만** 들어있습니다 — 정지된 사진이나
 화면 캡처를 들이대면 EAR(눈 개폐 비율)이 변하지 않아 통과하지 못합니다. 단, 눈 부분에
@@ -144,7 +204,8 @@ BYOM을 지원해서, `manifest.json` + `.tflite`만 놓으면 다른 임베딩 
 
 | 모델 | 역할 | 라이선스 | 동봉 여부 |
 |---|---|---|---|
-| BlazeFace short-range | 검출 | Apache 2.0 (MediaPipe) | ✅ 동봉 |
+| YuNet (160×160) | 검출 (기본값) | MIT (OpenCV Zoo) | ✅ 동봉 |
+| BlazeFace short-range | 검출 (폴백) | Apache 2.0 (MediaPipe) | ✅ 동봉 |
 | MediaPipe Face Landmarker (478점) | 라이브니스용 랜드마크 | Apache 2.0 (MediaPipe) | ✅ 동봉 |
 | AuraFace (glintr100 / ResNet100) | 임베딩 (기본값) | Apache 2.0 (fal.ai) | ✅ 동봉 (`tool/fetch_models.sh`로 받음) |
 | ArcFace (buffalo_l / w600k_r50) | 임베딩 (BYOM 예시) | 비상업 연구용 (InsightFace) | ❌ BYOM |
@@ -162,6 +223,7 @@ BYOM 모델은 각 `manifest.json`의 `license.source`에 적힌 원본 저장�
 
 | 항목 | 라이선스 | 출처 |
 |---|---|---|
+| YuNet (face_detection_yunet) | MIT | https://github.com/opencv/opencv_zoo |
 | BlazeFace short-range | Apache 2.0 | https://github.com/google/mediapipe |
 | MediaPipe Face Landmarker | Apache 2.0 | https://github.com/google/mediapipe |
 | tflite_flutter | Apache 2.0 | https://pub.dev/packages/tflite_flutter |
@@ -189,7 +251,7 @@ lib/src/
   core/        순수 Dart 데이터 모델·수학·인터페이스 (Flutter 의존성 없음)
   inference/   TFLite 연동, manifest 파싱/라이선스 가드
   image/       카메라 프레임(YUV420) → RGB 변환, 리사이즈/크롭
-  detection/   BlazeFace
+  detection/   YuNet(기본) + BlazeFace(폴백)
   alignment/   5점 어파인 정렬
   embedding/   임베딩 어댑터(ArcFace/AdaFace/FaceNet) + 매니페스트 기반 로더
   matching/    코사인 매처

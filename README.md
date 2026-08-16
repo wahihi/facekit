@@ -24,20 +24,61 @@ Camera (or gallery image) → face detection → alignment → embedding →
 matching, the full face recognition pipeline runs entirely on-device (no
 network calls).
 
-- **Detection**: BlazeFace (MediaPipe, Apache 2.0) — bundled with the SDK,
-  no separate download needed
+- **Detection**: YuNet (OpenCV Zoo / libfacedetection, MIT) — bundled with
+  the SDK, no separate download needed. It emits the **full 5-point landmark
+  set (both eyes, nose, both mouth corners) natively**, so the standard
+  ArcFace alignment can be used without compromise. BlazeFace (MediaPipe,
+  Apache 2.0) is still bundled but only as a fallback — see
+  [Why YuNet is the default detector](#why-yunet-is-the-default-detector)
 - **Embedding**: a swappable-model architecture — ships with **AuraFace**
   (Apache 2.0) as the default, plus adapters built in for ArcFace / AdaFace
   / MobileFaceNet / FaceNet, whose weights remain BYOM (bring your own)
 - **Matching**: cosine similarity, accept/reject decided by the manifest's
   threshold
-- **Liveness (Free)**: blink detection (EAR) — holding up a static photo
-  never passes
+- **Liveness (Free)**: blink detection (EAR) — **currently disabled by
+  default in the example app**
+  ([#4](https://github.com/wahihi/facekit/issues/4); see the liveness
+  section below)
 - **On-device only**: heavy inference (embedding) runs in a separate Dart
   isolate so it never blocks the UI
 
 See [doc/EN/architecture.md](doc/EN/architecture.md) /
 [doc/KR/architecture.md](doc/KR/architecture.md) for the full design.
+
+## Why YuNet is the default detector
+
+BlazeFace short-range was the original default. The problem was landmarks:
+of the six keypoints BlazeFace emits, the mouth is a **single centre
+point**, so the standard 5-point alignment that ArcFace-family embedders
+assume (both eyes, nose, **both mouth corners**) could not be filled in.
+`AffineAligner` compromised down to four points, and that distortion ate
+directly into recognition accuracy.
+
+The measurements bear this out. On the same 200 LFW pairs:
+
+| Alignment | AuraFace clean EER | Threshold |
+|---|---|---|
+| None (resize only) | 10.0% | 0.30 |
+| YuNet native 5-point | **2.5%** | **0.211** |
+
+Every attempt to fix low recognition rates by lowering the threshold failed
+(the 0.30 → 0.25 → 0.27 history is in
+[doc/EN/adaface_verification.md](doc/EN/adaface_verification.md#giving-up-on-threshold-tuning-in-favor-of-a-pose-gate-2026-08-11-continued));
+the real cause was that alignment had bad inputs to begin with. **Alignment
+quality comes before threshold tuning** is the most expensive lesson this
+project has produced.
+
+SCRFD (InsightFace) also emits 5 points natively, but was ruled out on
+licensing: separately from its Apache 2.0 detection code, the upstream
+repository marks the training data — and models trained on it — as
+non-commercial research only, and its training set (WIDER FACE) carries a
+non-commercial licence of its own. YuNet's distributor (OpenCV Zoo) states
+MIT for the weights themselves. Full write-up in the
+[2026-08-12 postmortem](doc/EN/postmortem/2026-08-12-yunet-landmark-order.md).
+
+BlazeFace was kept rather than removed (`BlazeFaceDetector`, weights still
+bundled), so it can be swapped back in if YuNet misbehaves on a given
+device.
 
 ## Quick start
 
@@ -49,12 +90,12 @@ setup, the default AuraFace path, building, and installing on a device.
 ```dart
 import 'package:facekit/facekit.dart';
 
-// 1) Detector — bundled with the SDK, loads directly
+// 1) Detector — bundled with the SDK, loads directly (YuNet, MIT)
 final detectorManifest = ModelManifest.fromJsonString(
-  await rootBundle.loadString('packages/facekit/assets/models/blazeface_short/manifest.json'),
+  await rootBundle.loadString('packages/facekit/assets/models/yunet_160/manifest.json'),
 );
-final detector = await BlazeFaceDetector.fromAsset(
-  tfliteAssetPath: 'packages/facekit/assets/models/blazeface_short/face_detection_short_range.tflite',
+final detector = await YuNetDetector.fromAsset(
+  tfliteAssetPath: 'packages/facekit/assets/models/yunet_160/yunet_160.tflite',
   manifest: detectorManifest,
 );
 
@@ -134,12 +175,44 @@ across the board. Build modes differ between the two tables above (see
 each doc section for why), so treat the ratio between them as a rough
 reference rather than a controlled comparison.
 
-Accuracy (EER on 200 LFW pairs) is 8.5% for ArcFace / 2.0% for AdaFace /
-10.0% for AuraFace, with AdaFace staying more robust under low-resolution
+Accuracy (EER on 200 LFW pairs) is **2.5% for AuraFace** with YuNet's
+native 5-point alignment applied (threshold 0.211). The older figures —
+8.5% ArcFace / 2.0% AdaFace / 10.0% AuraFace — were measured **without
+alignment (resize only)**, so don't read the two AuraFace numbers as a
+like-for-like pair. ArcFace *was* re-measured under YuNet's native 5-point
+alignment in the same Python-side validation and tied AuraFace exactly at
+2.5% (see the
+[2026-08-12 postmortem](doc/EN/postmortem/2026-08-12-yunet-landmark-order.md))
+— but `arcface_buffalo_l`'s shipped `manifest.json` threshold hasn't been
+updated to adopt that measurement yet (still `0.26`, from the unaligned
+figure). AdaFace has not been re-measured under YuNet alignment at all.
+AdaFace remains the most robust under low-resolution
 conditions (full numbers and the AuraFace `input.normalize` bug this
 uncovered in [doc/EN/adaface_verification.md](doc/EN/adaface_verification.md)).
 
+**Note**: the `Detection (BlazeFace)` column in the tables above predates
+the detector switch (2026-08-12). On-device detection timings for YuNet
+have not been re-measured.
+
 ## Liveness / Free vs. Pro boundary
+
+> ⚠️ **Liveness is currently disabled by default in the example app**
+> (`_kLivenessEnabled = false` in `example/lib/main.dart`). Real-device
+> re-verification on 2026-08-16 surfaced two problems: (1) running the
+> 478-point landmark model on every frame pushed frame processing from a
+> 55ms median to 186ms, which made genuine blinks hard to catch, and (2)
+> `LivenessState.passed` is not re-verified per `identify()` attempt and is
+> not tied to *which* face is in frame — so right after passing, a monitor
+> photo of a different person sailed straight through the liveness gate
+> (it was rejected downstream, by embedding similarity, only). The second
+> is a spoofing defect rather than a UX one, so it is tracked openly as
+> [#4](https://github.com/wahihi/facekit/issues/4) instead of being
+> quick-patched, and **until it is fixed this SDK does not claim to block
+> photo spoofing.** The published demo video was recorded with liveness
+> enabled, so cloning and building today will not reproduce its
+> photo-rejection scene.
+
+What follows describes the behaviour and design limits when it is enabled.
 
 This repository (Free) ships **blink-detection liveness only** — holding up
 a static photo or a screen capture never passes, since EAR (eye-aspect
@@ -164,7 +237,8 @@ non-redistributable weight file from the repository:
 
 | Model | Role | License | Bundled |
 |---|---|---|---|
-| BlazeFace short-range | Detection | Apache 2.0 (MediaPipe) | ✅ Yes |
+| YuNet (160×160) | Detection (default) | MIT (OpenCV Zoo) | ✅ Yes |
+| BlazeFace short-range | Detection (fallback) | Apache 2.0 (MediaPipe) | ✅ Yes |
 | MediaPipe Face Landmarker (478-pt) | Liveness landmarks | Apache 2.0 (MediaPipe) | ✅ Yes |
 | AuraFace (glintr100 / ResNet100) | Embedding (default) | Apache 2.0 (fal.ai) | ✅ Yes (fetched via `tool/fetch_models.sh`) |
 | ArcFace (buffalo_l / w600k_r50) | Embedding (BYOM example) | Non-commercial research (InsightFace) | ❌ BYOM |
@@ -185,6 +259,7 @@ boundary in code, not just in docs
 
 | Component | License | Source |
 |---|---|---|
+| YuNet (face_detection_yunet) | MIT | https://github.com/opencv/opencv_zoo |
 | BlazeFace short-range | Apache 2.0 | https://github.com/google/mediapipe |
 | MediaPipe Face Landmarker | Apache 2.0 | https://github.com/google/mediapipe |
 | tflite_flutter | Apache 2.0 | https://pub.dev/packages/tflite_flutter |
@@ -215,7 +290,7 @@ lib/src/
   core/        pure Dart data models, math, interfaces (no Flutter dependency)
   inference/   TFLite plumbing, manifest parsing/license guard
   image/       camera frame (YUV420) → RGB conversion, resize/crop
-  detection/   BlazeFace
+  detection/   YuNet (default) + BlazeFace (fallback)
   alignment/   5-point affine alignment
   embedding/   embedding adapters (ArcFace/AdaFace/FaceNet) + manifest-driven loader
   matching/    cosine matcher

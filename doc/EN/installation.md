@@ -393,12 +393,16 @@ EmbedderAdapter adapterForFamily(String family) {
 
 | Model | License | Source |
 |---|---|---|
-| BlazeFace short-range (detection) | Apache 2.0 | https://github.com/google/mediapipe |
+| YuNet 160×160 (detection, default) | MIT | https://github.com/opencv/opencv_zoo — re-exported with onnx2tf to a fixed 160×160 input (same weights/architecture as upstream) |
+| BlazeFace short-range (detection, fallback) | Apache 2.0 | https://github.com/google/mediapipe |
 | MediaPipe Face Landmarker (478-point, used for liveness) | Apache 2.0 | https://github.com/google/mediapipe |
 | AuraFace (glintr100/ResNet100, default embedding) | Apache 2.0 | [fal/AuraFace-v1](https://huggingface.co/fal/AuraFace-v1) — the `.tflite` weight itself isn't committed to the repo (fetched via `tool/fetch_models.sh` from a GitHub Release) purely because of its size, not a license restriction |
 
-All three have commercially usable licenses, so they work out of the box
-with no BYOM steps needed. The additional models covered in Appendix A
+All of these have commercially usable licenses, so they work out of the box
+with no BYOM steps needed. For why YuNet rather than BlazeFace is the
+default detector (BlazeFace's single centre mouth point can't fill the
+5-point alignment, which cost accuracy), see the
+[README](../../README.md#why-yunet-is-the-default-detector). The additional models covered in Appendix A
 (`arcface_buffalo_l` etc.) are mostly non-commercial research licenses that
 you need to source yourself.
 

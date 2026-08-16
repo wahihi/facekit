@@ -7,19 +7,27 @@ step by step, from a raw camera frame to a "this is person X" answer.
 ## 1. Design principles
 
 - **Clean-room implementation.** Every module's source comment cites the
-  public model/paper/spec it's based on (BlazeFace paper, MediaPipe, ArcFace
+  public model/paper/spec it's based on (YuNet/libfacedetection, the
+  BlazeFace paper, MediaPipe, ArcFace
   reference alignment, etc.). No proprietary or third-party commercial code
   is referenced.
 - **Pure core.** `lib/src/core/` never imports `package:flutter/*` or
   `dart:ui` — it's plain Dart, runnable and testable without Flutter at all.
 - **Interfaces over implementations.** Every pipeline stage is an abstract
   contract (`FaceDetector`, `FaceAligner`, `FaceEmbedder`, `FaceMatcher`).
-  Concrete implementations (BlazeFace, ArcFace, etc.) are swappable behind
+  Concrete implementations (YuNet, BlazeFace, ArcFace, etc.) are swappable behind
   these contracts, and tests inject fakes/stubs through them.
-- **BYOM licensing model.** Detection (BlazeFace, Apache 2.0) is bundled with
-  the package. Embedding models are *not* bundled — they're research-licensed
-  weights the developer brings themselves (Bring Your Own Model). This keeps
-  the SDK itself free of non-commercial licensing risk.
+- **Weight licences are checked down to the training data.** Detection
+  (YuNet, MIT / BlazeFace, Apache 2.0), landmarks (Face Landmarker, Apache
+  2.0) and the default embedder (AuraFace, Apache 2.0) are bundled only
+  after confirming the *weights* are commercially redistributable. A code
+  licence is never taken as a proxy for a weight licence — SCRFD, for
+  instance, ships Apache 2.0 detection code but its upstream repository
+  marks the training data, and models trained on it, as non-commercial
+  research only, so it was not adopted. Other embedding models
+  (ArcFace/AdaFace/FaceNet, …) stay BYOM (Bring Your Own Model), and
+  `ModelManifest.assertLoadable()` blocks non-redistributable weights from
+  loading in a release build.
 
 ## 2. Layered architecture
 
@@ -68,9 +76,9 @@ Its `enroll()` and `identify()` methods both run the same four-stage chain;
 
 ```
 FaceImage
-   │  (1) DETECT — BlazeFaceDetector
+   │  (1) DETECT — YuNetDetector (default) / BlazeFaceDetector (fallback)
    ▼
-DetectedFace  (bbox + 6 landmarks, pixel-space)
+DetectedFace  (bbox + landmarks, pixel-space — 5 for YuNet, 6 for BlazeFace)
    │  (2) ALIGN — AffineAligner
    ▼
 AlignedFace  (112×112 or 160×160 RGB, face-frontalised)
@@ -84,8 +92,37 @@ MatchResult  (matchedId, similarity, accepted)
 
 ### Stage 1 — Detect (`lib/src/detection/`)
 
-`BlazeFaceDetector` wraps Google's **BlazeFace short-range** model
-(Apache 2.0, bundled at `assets/models/blazeface_short/`):
+The default detector is **YuNet** (`YuNetDetector`); `BlazeFaceDetector`
+remains as a fallback.
+
+**Why YuNet is the default.** Of the six keypoints BlazeFace emits, the
+mouth is a single centre point. The standard 5-point alignment that
+ArcFace-family embedders assume needs both mouth corners, so `AffineAligner`
+had to compromise down to four points — and that distortion ate directly
+into accuracy (AuraFace clean EER 10.0%). Switching to YuNet, which emits
+all five natively, moved the same 200 LFW pairs to EER 2.5% at threshold
+0.211. Full write-up in the
+[2026-08-12 postmortem](postmortem/2026-08-12-yunet-landmark-order.md).
+YuNet's weights are stated MIT by their distributor (OpenCV Zoo) and are
+bundled at `assets/models/yunet_160/` (re-exported with onnx2tf to a fixed
+160×160 input — same weights and architecture as upstream).
+
+`YuNetDetector` works as follows:
+
+1. The input `FaceImage` is resized to 160×160 (BGR, no normalisation).
+2. TFLite inference produces multi-scale outputs at strides 8/16/32
+   (classification scores, box regression, 5-point landmark regression).
+3. `yunet_decoder.dart` reconstructs boxes and landmarks against each
+   stride's anchor centres, filters by `score_threshold` (0.45 after
+   on-device tuning), and runs NMS (`iou_threshold`).
+4. Coordinates are scaled back into the original `FaceImage` pixel space, so
+   the aligner downstream never needs to know the detector's internal
+   resolution.
+5. To handle small/distant faces, the first pass runs on a centred square
+   crop of the frame and falls back to the whole frame if that misses.
+
+The fallback `BlazeFaceDetector` wraps Google's **BlazeFace short-range**
+model (Apache 2.0, bundled at `assets/models/blazeface_short/`):
 
 1. The input `FaceImage` is resized to 128×128 and normalised to `[-1, 1]`.
 2. TFLite inference produces two raw tensors: `[1, 896, 16]` regressors
@@ -109,10 +146,13 @@ fixes that with a **5-point similarity transform** (Umeyama's 1991
 closed-form least-squares method — rotation + uniform scale + translation,
 no shear):
 
-1. Five of BlazeFace's six landmarks (left eye, right eye, nose, mouth, and
-   a midpoint of the two ear points standing in for a fifth point) are
-   matched against a canonical reference layout — e.g.
-   `arcface112Ref`, the standard ArcFace 112×112 reference coordinates.
+1. The detector's landmarks are matched against a canonical reference
+   layout — e.g. `arcface112Ref`, the standard ArcFace 112×112 reference
+   coordinates. YuNet supplies all five points (left eye, right eye, nose,
+   left and right mouth corner) directly, so the correspondence is 1:1.
+   The BlazeFace fallback has only a single centre mouth point, so it must
+   compromise down to four — a measurably worse path, and the reason the
+   default detector was switched.
 2. The closed-form 2×2 similarity matrix is computed via an analytic 2×2 SVD
    (no external linear-algebra dependency needed for a 2×2 case).
 3. The image is bilinearly resampled through the inverse transform into a
@@ -171,7 +211,7 @@ model via `CosineMatcher.fromManifest(manifest)`, reading
 
 | Tier | Meaning | Redistributable |
 |---|---|---|
-| `bundled` | Ships inside the facekit package (e.g. BlazeFace, Apache 2.0) | yes |
+| `bundled` | Ships inside the facekit package (e.g. YuNet MIT, BlazeFace Apache 2.0) | yes |
 | `research` | Evaluation/PoC only (e.g. ArcFace buffalo_l, trained on non-commercial data) | no |
 | `byom` | Developer supplies their own commercially-licensed model | n/a |
 | `licensed` | A commercial license has been purchased for a specific model | yes (under that license) |

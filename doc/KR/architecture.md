@@ -7,18 +7,25 @@ facekit은 Flutter용 클린룸(clean-room) 온디바이스 얼굴인식 SDK입�
 ## 1. 설계 원칙
 
 - **클린룸 구현.** 모든 모듈의 소스 주석에는 근거가 된 공개 모델/논문/스펙을
-  명시합니다(BlazeFace 논문, MediaPipe, ArcFace 정렬 기준 등). 독점·상용 코드는
+  명시합니다(YuNet/libfacedetection, BlazeFace 논문, MediaPipe, ArcFace 정렬
+  기준 등). 독점·상용 코드는
   참조하지 않습니다.
 - **순수한 core.** `lib/src/core/`는 `package:flutter/*`나 `dart:ui`를 절대
   import하지 않습니다 — Flutter 없이도 실행·테스트 가능한 순수 Dart입니다.
 - **구현보다 인터페이스.** 파이프라인의 모든 단계는 추상 인터페이스
   (`FaceDetector`, `FaceAligner`, `FaceEmbedder`, `FaceMatcher`)로 정의됩니다.
-  BlazeFace·ArcFace 등 구체 구현은 이 인터페이스 뒤에서 교체 가능하고,
+  YuNet·BlazeFace·ArcFace 등 구체 구현은 이 인터페이스 뒤에서 교체 가능하고,
   테스트에서는 이 자리에 가짜(stub) 구현을 주입합니다.
-- **BYOM 라이선스 모델.** 검출(BlazeFace, Apache 2.0)은 패키지에 동봉됩니다.
-  반면 임베딩 모델은 동봉하지 않습니다 — 연구용으로만 라이선스된 가중치라서,
-  개발자가 직접 가져와서 끼우는 구조(BYOM, Bring Your Own Model)입니다. 이를
-  통해 SDK 자체는 비상업 라이선스 리스크에서 자유롭습니다.
+- **가중치 라이선스는 학습 데이터까지 확인한다.** 검출(YuNet, MIT / BlazeFace,
+  Apache 2.0)과 랜드마크(Face Landmarker, Apache 2.0), 그리고 기본 임베더
+  (AuraFace, Apache 2.0)는 가중치까지 상업 재배포가 가능함을 확인하고
+  동봉합니다. 코드 라이선스만 보고 가중치를 판단하지 않습니다 — 예를 들어
+  SCRFD는 검출 코드가 Apache 2.0이지만 상위 저장소가 학습 데이터와 그
+  데이터로 학습된 모델을 비상업 연구 전용으로 명시해 채택하지 않았습니다.
+  그 외 임베딩 모델(ArcFace/AdaFace/FaceNet 등)은 동봉하지 않고 개발자가 직접
+  끼우는 구조(BYOM, Bring Your Own Model)를 유지하며,
+  `ModelManifest.assertLoadable()`이 재배포 불가 모델의 release 로드를
+  코드 레벨에서 막습니다.
 
 ## 2. 계층 구조
 
@@ -68,9 +75,9 @@ UI / example 앱
 
 ```
 FaceImage
-   │  (1) 검출(DETECT) — BlazeFaceDetector
+   │  (1) 검출(DETECT) — YuNetDetector (기본) / BlazeFaceDetector (폴백)
    ▼
-DetectedFace  (bbox + 6 랜드마크, 픽셀 좌표)
+DetectedFace  (bbox + 랜드마크, 픽셀 좌표 — YuNet은 5점, BlazeFace는 6점)
    │  (2) 정렬(ALIGN) — AffineAligner
    ▼
 AlignedFace  (112×112 또는 160×160 RGB, 정면화된 얼굴)
@@ -84,7 +91,34 @@ MatchResult  (matchedId, similarity, accepted)
 
 ### 1단계 — 검출 (`lib/src/detection/`)
 
-`BlazeFaceDetector`는 구글의 **BlazeFace short-range** 모델(Apache 2.0,
+기본 검출기는 **YuNet**(`YuNetDetector`)이고, `BlazeFaceDetector`는 폴백으로
+남아 있습니다.
+
+**왜 YuNet이 기본인가.** BlazeFace가 주는 6개 키포인트에는 입이 중앙 1점밖에
+없습니다. ArcFace 계열이 전제하는 표준 5점 정렬은 양 입꼬리를 요구하는데 이를
+채울 수 없어서, `AffineAligner`가 4점으로 타협해 정렬해야 했고 그 왜곡이
+인식 정확도를 그대로 갉아먹었습니다(AuraFace clean EER 10.0%). 5점을
+네이티브로 출력하는 YuNet으로 교체하자 같은 LFW 200쌍에서 EER이 2.5%,
+임계값이 0.211로 개선됐습니다. 전체 경위는
+[2026-08-12 포스트모템](postmortem/2026-08-12-yunet-landmark-order.md) 참고.
+YuNet 가중치는 배포처(OpenCV Zoo)가 MIT로 명시하며,
+`assets/models/yunet_160/`에 동봉됩니다(onnx2tf로 입력 shape만 160×160
+고정으로 재변환 — 가중치·구조는 원본과 동일).
+
+`YuNetDetector`의 처리 순서:
+
+1. 입력 `FaceImage`를 160×160으로 리사이즈합니다(정규화 없음, BGR).
+2. TFLite 추론으로 스트라이드 8/16/32의 멀티스케일 출력(분류 점수, 박스
+   회귀, 5점 랜드마크 회귀)이 나옵니다.
+3. `yunet_decoder.dart`가 각 스트라이드의 앵커 중심을 기준으로 박스와 5점을
+   복원하고, `score_threshold`(실기기 튜닝 결과 0.45)로 거른 뒤
+   NMS(`iou_threshold`)를 돌립니다.
+4. 좌표를 원본 `FaceImage` 픽셀 좌표계로 스케일링해서 반환하므로, 다음 단계인
+   정렬기는 검출기 내부 해상도를 알 필요가 없습니다.
+5. 작고 먼 얼굴 대응을 위해 1차 패스는 프레임 가운데 정사각형 크롭에서,
+   실패 시 2차 패스로 전체 프레임에서 검출합니다.
+
+폴백인 `BlazeFaceDetector`는 구글의 **BlazeFace short-range** 모델(Apache 2.0,
 `assets/models/blazeface_short/`에 동봉됨)을 감쌉니다:
 
 1. 입력 `FaceImage`를 128×128로 리사이즈하고 `[-1, 1]`로 정규화합니다.
@@ -107,9 +141,12 @@ MatchResult  (matchedId, similarity, accepted)
 (Umeyama의 1991년 폐형(closed-form) 최소제곱법 — 회전 + 등방 스케일 +
 이동만, 전단(shear) 없음)으로 이를 보정합니다:
 
-1. BlazeFace의 6개 랜드마크 중 5개(좌안, 우안, 코, 입, 그리고 두 귀 점의
-   중점으로 다섯 번째 점을 대체)를 정형화된 기준 좌표 — 예를 들어 ArcFace
-   112×112 표준 기준 좌표인 `arcface112Ref` — 와 매칭합니다.
+1. 검출기가 준 랜드마크를 정형화된 기준 좌표 — 예를 들어 ArcFace 112×112
+   표준 기준 좌표인 `arcface112Ref` — 와 매칭합니다. YuNet은 좌안·우안·코·
+   좌우 입꼬리 **5점을 그대로** 주므로 기준 좌표와 1:1로 대응됩니다.
+   폴백인 BlazeFace를 쓸 때는 입이 중앙 1점뿐이라 양 입꼬리를 채울 수 없어
+   4점으로 타협해야 합니다 — 정확도가 떨어지는 경로이며, 이것이 기본
+   검출기를 YuNet으로 바꾼 이유입니다.
 2. 2×2 유사변환 행렬을 해석적(analytic) 2×2 SVD로 폐형 계산합니다(2×2
    한정이라 외부 선형대수 라이브러리가 필요 없습니다).
 3. 역변환을 통해 이미지를 이중선형(bilinear) 보간으로 재샘플링해서 정사각형
@@ -168,7 +205,7 @@ MatchResult  (matchedId, similarity, accepted)
 
 | 등급 | 의미 | 재배포 가능 |
 |---|---|---|
-| `bundled` | facekit 패키지에 동봉(예: BlazeFace, Apache 2.0) | 가능 |
+| `bundled` | facekit 패키지에 동봉(예: YuNet MIT, BlazeFace Apache 2.0) | 가능 |
 | `research` | 평가/PoC 전용(예: 비상업 데이터로 학습된 ArcFace buffalo_l) | 불가 |
 | `byom` | 개발자가 직접 상업 라이선스 모델을 공급 | 해당 없음 |
 | `licensed` | 특정 모델에 대해 상업 라이선스를 구매한 상태 | 가능(해당 라이선스 범위 내) |
