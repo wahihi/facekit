@@ -8,6 +8,11 @@ facekit 파이프라인의 추론 속도·모델 크기·정확도를 측정한 
 정확도(EER) 측정 방법론과 원자료는 [adaface_verification.md](adaface_verification.md),
 [tool/model_verification/](../../tool/model_verification/)를 참고.
 
+> ⚠️ **주의 (2026-08-12):** 이 문서의 `검출(BlazeFace)` 수치는 전부 YuNet이
+> 기본 검출기가 되기 전(교체 이전)에 측정한 값입니다. YuNet의 실기기 추론
+> 시간은 아직 벤치마크하지 않았습니다 — 아래 수치들은 BlazeFace 시절의
+> 기록으로만 보고, 현재 기본 파이프라인을 대표하는 값으로 보지 마세요.
+
 ## 측정 환경
 
 이 머신(Linux VM, CPU 2코어, RAM 27GB)에서 TFLite Python 인터프리터(XNNPACK 위임,

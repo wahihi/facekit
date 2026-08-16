@@ -9,6 +9,12 @@ facekit pipeline. For accuracy (EER) methodology and raw data, see
 [adaface_verification.md](adaface_verification.md) and
 [tool/model_verification/](../../tool/model_verification/).
 
+> ⚠️ **Note (2026-08-12):** every `Detection (BlazeFace)` figure in this
+> document predates the switch to YuNet as the default detector. YuNet's
+> on-device inference time hasn't been benchmarked yet — treat these
+> numbers as historical (BlazeFace-specific), not representative of the
+> current default pipeline.
+
 ## Measurement environment
 
 Measured on this machine (Linux VM, 2 CPU cores, 27GB RAM) using the TFLite
