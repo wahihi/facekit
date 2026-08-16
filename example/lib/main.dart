@@ -40,17 +40,31 @@ import 'face_overlay.dart';
 // eliminated from the compiled binary, identical to C's #ifdef _DEMO_MODE.
 const _kDemoMode = true;
 
-// Temporarily gates out the blink-liveness check entirely (enroll/identify
-// treat every frame as already "passed") — a debugging toggle, not a
-// permanent policy decision. Real-device sessions (log3.txt, 2026-08-14)
-// showed liveness contributing its own friction on top of whatever was
-// making recognition itself unstable (frequent face-lost resets discarding
-// in-progress blink progress, genuine blinks being rare during a framing/
-// zoom test), which made it hard to tell how much of the instability was
-// recognition-quality vs liveness-gating. Flip back to true once
-// recognition stability is confirmed independently. `MediaPipeFaceLandmarker`
-// .detectLandmarks is skipped too while this is off, not just the gate —
-// no point paying for landmark inference nothing consumes.
+// Gates the blink-liveness check (enroll/identify only proceed once
+// BlinkLivenessDetector reports LivenessState.passed). Re-enabled
+// briefly on 2026-08-16 (example/log9.txt) once recognition stability
+// was independently confirmed, but that same test surfaced two liveness
+// -specific problems serious enough to disable it again for demo use:
+//   1. Turning MediaPipeFaceLandmarker.detectLandmarks back on for every
+//      frame roughly tripled-to-quintupled onFrame processing time
+//      (median 55ms -> 186ms, mean 63ms -> 317ms), which made genuine
+//      blinks hard to catch and made face-lost resets (which discard
+//      blink progress) far more frequent — reported as liveness feeling
+//      unusable ("여러 번 눈을 깜빡였으나 통과를 못 하네").
+//   2. LivenessState.passed persists for as long as tracking doesn't
+//      drop (500ms+ face-loss), independent of *which* face is currently
+//      in frame — so identify() doesn't require a fresh blink per
+//      attempt. In log9.txt this let a monitor photo of a different
+//      person through the liveness gate entirely (only correctly
+//      rejected downstream, by embedding similarity) — a real spoofing
+//      gap, not just a UX one: the same swap-after-passing trick would
+//      let a *photo of the enrolled person* through with no blink at
+//      all.
+// Long-term fix tracked at
+// https://github.com/wahihi/facekit/issues/4 rather than a quick patch
+// here. Flip this back to `true` only once that's addressed —
+// `MediaPipeFaceLandmarker.detectLandmarks` is skipped too while it's
+// off, not just the gate.
 const _kLivenessEnabled = false;
 
 // Embedding model in use — swap these two constants to switch models (e.g.
@@ -766,9 +780,131 @@ class _RecognitionPageState extends State<RecognitionPage> {
     );
   }
 
+  /// The camera preview + face-overlay area — same content regardless of
+  /// orientation, just given a differently-shaped box by [_buildBody].
+  Widget _buildCameraArea() {
+    final controller = _controller;
+    return controller == null || !controller.value.isInitialized
+        ? const Center(child: CircularProgressIndicator())
+        : CameraPreview(
+            controller,
+            child: CustomPaint(
+              painter: FaceOverlayPainter(
+                face: _overlayFace,
+                landmarks: _overlayLandmarks,
+                imageSize: _overlayImageSize,
+                // `_overlayImageSize` is already the *orientation-
+                // corrected* FaceImage's size (rotated by
+                // _cameraQuarterTurns(), which now folds in live
+                // deviceOrientation) — it's already upright, same as
+                // what CameraPreview itself already displays, so no
+                // further rotation is needed here. Using
+                // quarterTurnsForController(controller) (raw-sensor-
+                // space delta) on top of an already-corrected image
+                // would double-rotate the overlay away from the face
+                // for any non-portraitUp hold.
+                quarterTurns: 0,
+                mirror: _lensDirection == CameraLensDirection.front,
+                guideRegion: _guideRegion,
+                boxColor: _livenessState == LivenessState.passed
+                    ? Colors.greenAccent
+                    : Colors.amber,
+                label: _overlayFace == null
+                    ? null
+                    : _matchLabel ??
+                          (_livenessState == LivenessState.passed
+                              ? '라이브 확인됨'
+                              : '눈을 깜빡여주세요'),
+              ),
+            ),
+          );
+  }
+
+  /// Status text, name field, and every button — same content regardless
+  /// of orientation. [scrollable] wraps it in a [SingleChildScrollView]
+  /// for the landscape side-panel layout, where this whole stack of
+  /// controls has to fit into a much shorter vertical space than portrait
+  /// gives it, and would otherwise overflow.
+  Widget _buildControlsPanel(BuildContext context, {required bool scrollable}) {
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          _status,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        if (_framingHint != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            _framingHint!,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Colors.orange.shade800,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+        TextField(
+          controller: _nameController,
+          decoration: const InputDecoration(
+            labelText: '등록할 이름',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton(
+                onPressed: _pipeline == null
+                    ? null
+                    : () => setState(() {
+                        _pendingEnrollName = _nameController.text.trim().isEmpty
+                            ? '나'
+                            : _nameController.text.trim();
+                        _status = '등록 중... 카메라를 바라봐주세요.';
+                      }),
+                child: const Text('현재 얼굴 등록'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: ElevatedButton(
+                onPressed: _pipeline == null
+                    ? null
+                    : () => setState(() {
+                        _identifying = !_identifying;
+                        _status = _identifying ? '실시간 인식 중...' : '인식 중지됨';
+                      }),
+                child: Text(_identifying ? '인식 중지' : '실시간 인식 시작'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          title: const Text('NNAPI 가속 사용 (벤치마크용)'),
+          value: _useNnApiForBenchmark,
+          onChanged: _benchmarking
+              ? null
+              : (v) => setState(() => _useNnApiForBenchmark = v),
+        ),
+        OutlinedButton(
+          onPressed: (_pipeline == null || _benchmarking) ? null : _runBenchmark,
+          child: Text(_benchmarking ? '벤치마크 실행 중...' : '벤치마크 실행'),
+        ),
+      ],
+    );
+    return scrollable ? SingleChildScrollView(child: content) : content;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final controller = _controller;
     return Scaffold(
       appBar: AppBar(
         title: const Text('facekit example'),
@@ -782,126 +918,42 @@ class _RecognitionPageState extends State<RecognitionPage> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: controller == null || !controller.value.isInitialized
-                ? const Center(child: CircularProgressIndicator())
-                : CameraPreview(
-                    controller,
-                    child: CustomPaint(
-                      painter: FaceOverlayPainter(
-                        face: _overlayFace,
-                        landmarks: _overlayLandmarks,
-                        imageSize: _overlayImageSize,
-                        // `_overlayImageSize` is already the *orientation-
-                        // corrected* FaceImage's size (rotated by
-                        // _cameraQuarterTurns(), which now folds in live
-                        // deviceOrientation) — it's already upright, same as
-                        // what CameraPreview itself already displays, so no
-                        // further rotation is needed here. Using
-                        // quarterTurnsForController(controller) (raw-sensor-
-                        // space delta) on top of an already-corrected image
-                        // would double-rotate the overlay away from the face
-                        // for any non-portraitUp hold.
-                        quarterTurns: 0,
-                        mirror: _lensDirection == CameraLensDirection.front,
-                        guideRegion: _guideRegion,
-                        boxColor: _livenessState == LivenessState.passed
-                            ? Colors.greenAccent
-                            : Colors.amber,
-                        label: _overlayFace == null
-                            ? null
-                            : _matchLabel ??
-                                  (_livenessState == LivenessState.passed
-                                      ? '라이브 확인됨'
-                                      : '눈을 깜빡여주세요'),
-                      ),
-                    ),
-                  ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+      // Portrait keeps the original stacked layout (camera on top, controls
+      // below): plenty of height for both. Landscape swaps to a side-by-side
+      // layout instead of reusing the same stack squeezed into a much
+      // shorter screen — the fixed-height controls block (name field + 2
+      // buttons + switch + benchmark button) doesn't shrink with the
+      // available height, so stacking it below the camera in landscape left
+      // almost nothing for the camera preview itself (reported on a real
+      // device: the face appeared "too small to see" once held sideways,
+      // even though the underlying ML rotation handling was already correct
+      // — see doc/KR/postmortem/2026-08-14-camera-orientation-and-auto-zoom.md).
+      body: OrientationBuilder(
+        builder: (context, orientation) {
+          if (orientation == Orientation.landscape) {
+            return Row(
               children: [
-                Text(
-                  _status,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                if (_framingHint != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    _framingHint!,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.orange.shade800,
-                      fontWeight: FontWeight.bold,
-                    ),
+                Expanded(flex: 3, child: _buildCameraArea()),
+                SizedBox(
+                  width: 260,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: _buildControlsPanel(context, scrollable: true),
                   ),
-                ],
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: '등록할 이름',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: _pipeline == null
-                            ? null
-                            : () => setState(() {
-                                _pendingEnrollName =
-                                    _nameController.text.trim().isEmpty
-                                    ? '나'
-                                    : _nameController.text.trim();
-                                _status = '등록 중... 카메라를 바라봐주세요.';
-                              }),
-                        child: const Text('현재 얼굴 등록'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: _pipeline == null
-                            ? null
-                            : () => setState(() {
-                                _identifying = !_identifying;
-                                _status = _identifying
-                                    ? '실시간 인식 중...'
-                                    : '인식 중지됨';
-                              }),
-                        child: Text(_identifying ? '인식 중지' : '실시간 인식 시작'),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  title: const Text('NNAPI 가속 사용 (벤치마크용)'),
-                  value: _useNnApiForBenchmark,
-                  onChanged: _benchmarking
-                      ? null
-                      : (v) => setState(() => _useNnApiForBenchmark = v),
-                ),
-                OutlinedButton(
-                  onPressed: (_pipeline == null || _benchmarking)
-                      ? null
-                      : _runBenchmark,
-                  child: Text(_benchmarking ? '벤치마크 실행 중...' : '벤치마크 실행'),
                 ),
               ],
-            ),
-          ),
-        ],
+            );
+          }
+          return Column(
+            children: [
+              Expanded(child: _buildCameraArea()),
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: _buildControlsPanel(context, scrollable: false),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
