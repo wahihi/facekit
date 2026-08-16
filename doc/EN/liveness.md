@@ -4,6 +4,20 @@
 
 # Basic liveness: blink detection (2026-06-26)
 
+> ⚠️ **Current status (2026-08-16): disabled by default in the example app**
+> (`_kLivenessEnabled = false` in `example/lib/main.dart`). Real-device
+> re-verification surfaced two problems: (1) running the 478-point landmark
+> model on every frame pushed frame processing from a 55ms median to 186ms,
+> making genuine blinks hard to catch, and (2) `LivenessState.passed` is not
+> re-verified per `identify()` attempt and is not tied to *which* face is in
+> frame — right after passing, a monitor photo of a different person went
+> straight through the gate (rejected downstream by embedding similarity
+> only). The second is a spoofing defect rather than a UX one, so it is
+> tracked openly as [#4](https://github.com/wahihi/facekit/issues/4) instead
+> of being quick-patched, and until it is fixed this SDK does not claim to
+> block photo spoofing. What follows describes the design and its limits
+> when enabled.
+
 A minimal liveness check added to facekit's Free tier — the most basic line
 of defense of "holding up a static photo doesn't pass." The
 `LivenessDetector` interface
@@ -13,8 +27,10 @@ between Free and Pro; this adds the Free-tier implementation,
 
 ## Why a new model was needed
 
-The existing detector (BlazeFace) only gives each eye as a **single point**
-(one of the 6 keypoints in `DetectedFace.landmarks`). EAR (Eye Aspect Ratio)
+The detector only gives each eye as a **single point** (one of the 6
+keypoints in `DetectedFace.landmarks` back when BlazeFace was the default;
+YuNet, the current default, likewise gives one point per eye — so this
+section's reasoning survives the detector switch unchanged). EAR (Eye Aspect Ratio)
 -based blink detection needs the upper/lower eyelid contour coordinates,
 which simply cannot be computed from a single point. So a new stage was
 added after detection: **MediaPipe Face Landmarker (a 478-point face
@@ -23,9 +39,10 @@ mesh)**.
 - Source: `unzip`ped from `face_landmarker.task` (the official MediaPipe
   release, Apache 2.0), extracting only `face_landmarks_detector.tflite`
   from inside it — the face detector and blendshape model bundled in the
-  same archive were excluded, since BlazeFace already handles detection and
-  blendshapes aren't used.
-- Same project, same license as BlazeFace (Apache 2.0, commercially usable),
+  same archive were excluded, since a dedicated detector already handles
+  detection and blendshapes aren't used.
+- Same project, same license as MediaPipe's other models (Apache 2.0,
+  commercially usable),
   so it's **bundled without BYOM** — registered under
   `assets/models/face_landmark_478/` and in `pubspec.yaml`'s
   `flutter.assets`.
@@ -36,7 +53,7 @@ mesh)**.
 ## Pipeline
 
 ```
-DetectedFace (BlazeFace box)
+DetectedFace (detector box — YuNet by default, BlazeFace fallback)
   → MediaPipeFaceLandmarker.detectLandmarks()   [lib/src/landmark/face_landmarker.dart]
       crop the box as a square with a 25% margin → resize to 256×256 → infer
       → map the 478 points from crop-space back to the original image's coordinates

@@ -4,21 +4,35 @@
 
 # 기본 라이브니스: 깜빡임 검출 (2026-06-26)
 
+> ⚠️ **현재 상태(2026-08-16): example 앱에서 기본 비활성화**
+> (`example/lib/main.dart`의 `_kLivenessEnabled = false`). 실기기 재검증에서
+> 두 가지 문제를 확인했다: (1) 매 프레임 478점 랜드마크 추론이 프레임 처리
+> 시간을 중앙값 55ms → 186ms로 늘려 실제 깜빡임을 놓치게 만들고, (2)
+> `LivenessState.passed`가 `identify()` 시도마다 재검증되지 않고 프레임 안의
+> 얼굴이 누구인지와도 무관해서, 통과 직후 다른 사람의 모니터 사진이 게이트를
+> 그대로 지나갔다(임베딩 유사도에서만 거부). 두 번째는 UX가 아니라 위조 방어
+> 자체의 결함이라 임시 패치 대신
+> [#4](https://github.com/wahihi/facekit/issues/4)로 공개 추적 중이며, 해결
+> 전까지 이 SDK가 사진 위조를 막는다고 주장하지 않는다. 아래 문서는 활성화
+> 했을 때의 설계와 한계를 설명한다.
+
 facekit Free 티어에 추가된 최소 라이브니스 — "정지된 사진을 들이대면 통과 안 된다"는
 가장 기본적인 방어선이다. `LivenessDetector` 인터페이스([lib/src/core/contracts.dart](../../lib/src/core/contracts.dart))는
 Free/Pro 공통이며, 이번에 Free용 구현체 `BlinkLivenessDetector`를 추가했다.
 
 ## 왜 새 모델이 필요했나
 
-기존 검출기(BlazeFace)는 눈을 **점 1개**로만 준다(`DetectedFace.landmarks`의 6-keypoint 중 하나).
+검출기는 눈을 **점 1개**로만 준다(당시 기본 검출기였던 BlazeFace의 6-keypoint 중 하나이며,
+현재 기본 검출기인 YuNet도 눈은 5점 중 1점씩만 준다 — 이 절의 논리는 검출기 교체 후에도
+그대로 유효하다).
 EAR(Eye Aspect Ratio) 기반 깜빡임 검출에는 눈꺼풀 위/아래 윤곽 좌표가 필요한데, 점 1개로는
 원천적으로 계산할 수 없다. 그래서 검출 다음 단계로 **MediaPipe Face Landmarker(478점 페이스
 메시)** 를 새로 추가했다.
 
 - 출처: `face_landmarker.task`(공식 MediaPipe 배포본, Apache 2.0)을 `unzip`해서 그 안의
   `face_landmarks_detector.tflite`만 추출 — 같은 압축 안에 들어있는 얼굴 검출기·블렌드셰입
-  모델은 이미 BlazeFace로 검출을 하고 있고 블렌드셰입은 안 쓰므로 제외했다.
-- BlazeFace와 같은 프로젝트·같은 라이선스(Apache 2.0, 상업적 사용 가능)라서 **BYOM 없이
+  모델은 검출을 이미 별도 검출기로 하고 있고 블렌드셰입은 안 쓰므로 제외했다.
+- MediaPipe와 같은 프로젝트·같은 라이선스(Apache 2.0, 상업적 사용 가능)라서 **BYOM 없이
   동봉** — `assets/models/face_landmark_478/`, `pubspec.yaml`의 `flutter.assets`에 등록.
 - 입력 256×256 RGB, `(pixel-0)/255` 정규화. 출력은 478×3(x,y,z) 랜드마크 텐서 1개 +
   얼굴 신뢰도 스칼라(미사용, AdaFace 때 만든 `zeroTensor`로 무시).
@@ -26,7 +40,7 @@ EAR(Eye Aspect Ratio) 기반 깜빡임 검출에는 눈꺼풀 위/아래 윤곽 
 ## 파이프라인
 
 ```
-DetectedFace (BlazeFace box)
+DetectedFace (검출기 box — 기본값 YuNet, 폴백 BlazeFace)
   → MediaPipeFaceLandmarker.detectLandmarks()   [lib/src/landmark/face_landmarker.dart]
       박스를 마진 25% 포함 정사각형으로 크롭 → 256×256 리사이즈 → 추론
       → 478점을 크롭 좌표계에서 원본 이미지 좌표계로 역변환
