@@ -13,8 +13,9 @@
 
 ## 라이선스
 - 검출(BlazeFace Apache2.0 / YuNet MIT): 동봉 가능.
-- 임베딩: 동봉 금지(BYOM). Demo 모델은 license.redistributable=false 로 표기,
-  release 빌드 시 차단.
+- 임베딩: 가중치 라이선스가 상업적 재배포를 명시적으로 허용하는 경우에만 동봉
+  (예: AuraFace, Apache 2.0 — 기본값으로 동봉). 그 외 임베딩 모델은 동봉 금지(BYOM).
+  Demo/연구용 모델은 license.redistributable=false 로 표기, release 빌드 시 차단.
 
 ## 구조 / 계층 의존 방향 (단방향 — 역류 금지)
 UI/example → pipeline → detection/alignment/embedding/matching → inference → core
