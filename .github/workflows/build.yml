@@ -68,6 +68,53 @@ jobs:
             (also [in Korean](https://github.com/wahihi/facekit/blob/main/doc/KR/installation.md))
             for what it does and how to build it from source instead.
 
+            ## What's new in v0.2.0-rc.2
+
+            **Still a release candidate, not stable** — this round of
+            real-device testing closed some gaps and opened two new
+            tracked issues; see below.
+
+            - **Orientation verification**: `portraitUp`, `landscapeLeft`,
+              and `landscapeRight` all confirmed working on-device
+              (distinct `orientationDelta` per direction, correctly
+              resolved). `portraitDown` deliberately skipped — real-world
+              hold value is close to nil, and this device's OS doesn't
+              even offer it as an auto-rotate state.
+            - **Responsive landscape layout**: the example app's UI used
+              to be a fixed vertical stack (camera on top, controls
+              below) that never adapted to landscape's much shorter
+              available height, leaving almost no room for the camera
+              preview once held sideways. Now switches to a side-by-side
+              layout (camera gets 3x the width of a scrollable controls
+              panel) via `OrientationBuilder`.
+            - **New: [#3](https://github.com/wahihi/facekit/issues/3)
+              landscape's centred-crop detection pass has a much lower
+              hit rate than portrait** (9-26% vs 66-92%) — a tall rotated
+              frame needs the face precisely vertically centred to land
+              inside the crop, which is harder to get right one-handed in
+              landscape. The whole-frame fallback keeps recognition
+              functional, just less consistent (~60-70% vs portrait's
+              ~92% identify-accept rate). Portrait is unaffected and is
+              what the current demo plan uses.
+            - **New: [#4](https://github.com/wahihi/facekit/issues/4)
+              liveness re-enabled, then disabled again** — briefly
+              flipped `_kLivenessEnabled` back to `true` now that
+              recognition stability was confirmed independently, but that
+              test surfaced (1) turning `MediaPipeFaceLandmarker
+              .detectLandmarks` back on for every frame roughly
+              quintupled frame-processing time, making genuine blinks
+              hard to catch, and (2) `LivenessState.passed` isn't
+              re-verified per `identify()` attempt or tied to *which*
+              face is in frame — a monitor photo of a different person
+              sailed straight through the liveness gate in testing (only
+              rejected downstream, by embedding similarity). Both need
+              real design work, not a quick patch, so liveness stays
+              disabled (`_kLivenessEnabled = false`) until #4 is
+              resolved.
+
+            <details>
+            <summary>v0.2.0-rc.1 — camera-level auto-zoom, centred-crop detection, orientation fix</summary>
+
             ## What's new in v0.2.0-rc.1
 
             **This is a release candidate, not a stable release** — real-device
@@ -121,6 +168,8 @@ jobs:
             it:
             [doc/EN/postmortem/2026-08-13-landmark-jitter-frame-fill.md](https://github.com/wahihi/facekit/blob/main/doc/EN/postmortem/2026-08-13-landmark-jitter-frame-fill.md)
             (also [in Korean](https://github.com/wahihi/facekit/blob/main/doc/KR/postmortem/2026-08-13-landmark-jitter-frame-fill.md)).
+
+            </details>
 
             <details>
             <summary>v0.1.4 — YuNet detector switch</summary>
