@@ -131,8 +131,31 @@ inference/tflite_ffi_runner.dart`)를 작성 — `tflite_flutter`의 ffigen 산�
 - `flutter analyze`/`flutter test`(outer) 무오류, `flutter build apk --debug`
   (example) 성공 — 안드로이드 경로 무회귀.
 
-**아직 안 한 것**: x86_64/arm64용 `libtensorflowlite_c.so` 자체를 구하거나 빌드하는
-일 — tflite_flutter 공식 문서 자체가 "리눅스는 프리빌드 없음, Bazel/CMake로 직접
-빌드"라고 명시한다. 원래 로드맵의 S4("arm64 이동")에서 어차피 필요했던 작업이라 이번
-스코프에서 의도적으로 미뤘다. 지금 코드는 그 라이브러리가 없어도 컴파일·타입체크는
-전부 통과하고, 실제 추론만 그 시점까지 막혀 있다.
+## x86_64용 libtensorflowlite_c.so 빌드 성공 (2026-08-26, 이어서)
+
+CMake로 직접 빌드해서 실제로 구했다. 공식 가이드(developers.google.com/edge/litert/build/cmake)
+그대로 시도했다가 한 번 실패했는데, 원인과 해결책을 남겨둔다 — arm64(Q6A)에서도 똑같이 겪을
+문제라 재발 방지 차원.
+
+**1차 시도 실패 원인**: `git clone`(플래그 없음, 즉 master HEAD)으로 받은 뒤 cmake configure를
+돌렸더니, `tensorflow/lite/CMakeLists.txt`가 **내부적으로 또 한 번** `FetchContent`로 tensorflow를
+따로 받는다(`GIT_TAG v2.21.0-rc0`로 고정돼 있음) — 결과적으로 내 클론(master HEAD)과 내부
+재클론(v2.21.0-rc0)이 서로 다른 커밋이 되고, 두 트리가 뒤섞이면서 `mmap_handle.cc`/`.h` 간
+선언 불일치로 컴파일 에러(`no declaration matches ...`)가 났다. TF 자체 버그가 아니라 **버전
+불일치**였다.
+
+**해결**: 처음부터 `git clone --depth 1 --branch v2.21.0-rc0`로 CMakeLists.txt가 기대하는
+바로 그 태그를 받고, `cmake -DTENSORFLOW_SOURCE_DIR=<내 클론 경로> ...`로 내부 재클론 자체를
+스킵시켰다. 이후 정상 빌드됨 — sudo 없는 이 VM이라 cmake도 Kitware 공식 바이너리를
+`~/tools/cmake`에 따로 설치해야 했다(apt 불가).
+
+**검증**: `FACEKIT_TFLITE_C_LIBRARY=<so 경로> dart test`로 `facekit_core` 전체 재실행 —
+**114개 중 114개 통과**(BYOM 모델 3개는 정상 skip). 이전엔 실패하던 4개(`blazeface_smoke_test`,
+`yunet_smoke_test`×2, `face_landmarker_smoke_test`)가 전부 실제 추론까지 통과했고,
+`face_pipeline_smoke_test.dart`(Isolate.run()이 FFI 포인터를 격리된 isolate로 잘 넘기는지
+검증하는 테스트)도 통과 — `TfliteFfiRunner`가 진짜로 동작한다는 뜻.
+
+**다음(Q6A/arm64 때 참고)**: 같은 레시피(태그 고정 + `TENSORFLOW_SOURCE_DIR` 오버라이드)를
+그대로 쓰면 된다. 빌드 산출물(`libtensorflowlite_c.so`, 8.8MB)은 저장소에 커밋하지 않음 —
+플랫폼별 바이너리라 BYOM/네이티브 아티팩트 취급, 로컬에만 둔다(`~/tools/tflite_c_build/
+tflite_build/`).
