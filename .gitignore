@@ -65,6 +65,7 @@ example/log*.txt
 # Flutter/Dart/Pub related
 # Libraries should not include pubspec.lock, per https://dart.dev/guides/libraries/private-files#pubspeclock.
 /pubspec.lock
+tool/probe/pubspec.lock
 **/doc/api/
 .dart_tool/
 .flutter-plugins-dependencies

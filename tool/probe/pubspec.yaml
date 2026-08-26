@@ -1,0 +1,7 @@
+name: probe
+description: "S1 probe — can a pure-Dart console app import package:facekit?"
+environment:
+  sdk: ^3.12.2
+dependencies:
+  facekit:
+    path: ../../
