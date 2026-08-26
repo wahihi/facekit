@@ -159,3 +159,33 @@ CMake로 직접 빌드해서 실제로 구했다. 공식 가이드(developers.go
 그대로 쓰면 된다. 빌드 산출물(`libtensorflowlite_c.so`, 8.8MB)은 저장소에 커밋하지 않음 —
 플랫폼별 바이너리라 BYOM/네이티브 아티팩트 취급, 로컬에만 둔다(`~/tools/tflite_c_build/
 tflite_build/`).
+
+## S3 — facekit_cli 착수 (2026-08-26, 이어서)
+
+`packages/facekit_cli/`(`facekit_core` path 의존, `package:image`로 JPEG 디코드,
+`package:args`로 CLI 인자 파싱) 작성:
+
+```
+dart run bin/facekit_cli.dart --image a.jpg \
+  --detector assets/models/yunet_160 --embedder example/assets/models/auraface
+→ {"faces":[{"bbox":[...],"score":..,"embedding":[512개],"ms":{"detect":..,"align":..,"embed":..}}]}
+```
+
+`tool/model_verification/`에 이미 있던 실사진(`me_1.jpg`, `me_2.jpg`, `other_1.jpg` — 프로젝트
+초기부터 모델 검증에 써온, 저장소에 커밋된 사진)으로 세 장 다 돌려서 자기 일관성을 확인했다:
+
+| 비교 | 코사인 유사도 | 판정 (threshold 0.211) |
+|---|---|---|
+| me_1 vs me_2 (동일 인물) | **0.745** | 통과(같은 사람으로 정확히 인식) |
+| me_1 vs other_1 (타인) | 0.026 | 정확히 거부 |
+| me_2 vs other_1 (타인) | 0.0006 | 정확히 거부 |
+
+YuNet 검출(bbox score 0.92~0.95) + AuraFace 임베딩이 실제로 올바르게 동작한다는 걸
+안드로이드 비교 없이도 확인할 수 있는 강력한 정황 증거다.
+
+**다만 이건 원래 S3 DoD(안드로이드 대비 코사인 ≥0.999)는 아직 아니다.** 지금 확인한 건
+"같은 사람/다른 사람을 올바르게 구분하는가"고, 원래 계획이 잡으려던 건 "리눅스와 안드로이드가
+같은 입력에 대해 플랫폼 차이 없이 같은 숫자를 내는가"(회전 보정 누락, 채널 순서 버그 같은
+플랫폼별 버그를 잡기 위한 것). 이건 안드로이드 실기기에서 이 세 사진(또는 아무 사진)을 같은
+파이프라인으로 돌린 실제 임베딩값이 있어야 비교할 수 있어서, 이 세션 안에서는 못 끝낸다 —
+종화님 Pixel 7에서 한 번 돌려주셔야 하는 부분.

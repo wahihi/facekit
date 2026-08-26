@@ -1,0 +1,20 @@
+name: facekit_cli
+description: >
+  Headless (no Flutter) face-detection/embedding CLI over facekit_core —
+  `dart run bin/facekit_cli.dart --image a.jpg --detector <dir> --embedder <dir>`.
+  Linux/Q6A target; not published.
+version: 0.1.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  args: ^2.5.0
+  image: ^4.2.0
+  facekit_core:
+    path: ../facekit_core
+
+dev_dependencies:
+  lints: ^5.0.0
+  test: ^1.24.0
