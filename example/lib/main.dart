@@ -240,7 +240,7 @@ class _RecognitionPageState extends State<RecognitionPage> {
           'packages/facekit/assets/models/yunet_160/manifest.json',
         ),
       );
-      final detector = await YuNetDetector.fromAsset(
+      final detector = await loadYuNetDetectorFromAsset(
         tfliteAssetPath:
             'packages/facekit/assets/models/yunet_160/yunet_160.tflite',
         manifest: detectorManifest,
@@ -250,7 +250,7 @@ class _RecognitionPageState extends State<RecognitionPage> {
       final embedderManifest = ModelManifest.fromJsonString(
         await rootBundle.loadString('$_embedderDir/manifest.json'),
       );
-      final embedder = await TfliteFaceEmbedder.fromAsset(
+      final embedder = await loadFaceEmbedderFromAsset(
         tfliteAssetPath: '$_embedderDir/$_embedderFile',
         manifest: embedderManifest,
       );
@@ -268,7 +268,7 @@ class _RecognitionPageState extends State<RecognitionPage> {
           'packages/facekit/assets/models/face_landmark_478/manifest.json',
         ),
       );
-      _landmarker = await MediaPipeFaceLandmarker.fromAsset(
+      _landmarker = await loadFaceLandmarkerFromAsset(
         tfliteAssetPath:
             'packages/facekit/assets/models/face_landmark_478/face_landmark_478.tflite',
         manifest: landmarkerManifest,
@@ -669,13 +669,13 @@ class _RecognitionPageState extends State<RecognitionPage> {
     final embedderManifest = _embedderManifest;
     if (detectorManifest == null || embedderManifest == null) return;
 
-    _nnapiDetector = await YuNetDetector.fromAsset(
+    _nnapiDetector = await loadYuNetDetectorFromAsset(
       tfliteAssetPath:
           'packages/facekit/assets/models/yunet_160/yunet_160.tflite',
       manifest: detectorManifest,
       useNnApi: true,
     );
-    _nnapiEmbedder = await TfliteFaceEmbedder.fromAsset(
+    _nnapiEmbedder = await loadFaceEmbedderFromAsset(
       tfliteAssetPath: '$_embedderDir/$_embedderFile',
       manifest: embedderManifest,
       useNnApi: true,

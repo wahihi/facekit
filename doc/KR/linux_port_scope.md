@@ -102,3 +102,37 @@ S2에서 ffigen으로 300줄을 새로 뽑는 대신 이 바인딩 파일들을 
 
 이 문서 1개. `dart:ui` 제거 리팩터는 필요 없었음(발견 2). `tool/probe/`는 조사에 쓴 최소 재현
 픽스처로 남겨둔다(`pubspec.yaml`, `main.dart`만 — 생성 산출물은 `.gitignore` 처리됨).
+
+## S2 완료 (2026-08-26)
+
+발견 1(패키지 스플릿 필요)에 따라 `packages/facekit_core/`(순수 Dart, `flutter:`도
+`tflite_flutter`도 미의존)를 실제로 분리했다. `core/alignment/detection/embedding/
+landmark/liveness/matching/pipeline/image/inference`(단, `tflite_runner.dart` 제외)가
+전부 이동했고, 기존 `facekit` 패키지는 그 위에 얇게 남아 `TfliteRunner`(Flutter/
+tflite_flutter 구현체)와 에셋 로더(`lib/src/asset_loaders.dart`)만 제공한다.
+`example/`은 5개 호출부(`X.fromAsset(...)` → `loadXFromAsset(...)`)만 기계적으로
+바뀌었을 뿐 동작은 무수정.
+
+발견 5(재사용 가능한 FFI 바인딩)에 따라 `TfliteFfiRunner`(`packages/facekit_core/lib/src/
+inference/tflite_ffi_runner.dart`)를 작성 — `tflite_flutter`의 ffigen 산출물
+(`bindings/tensorflow_lite_bindings_generated.dart`, Apache 2.0, 출처는
+`third_party/tflite_flutter/NOTICE.md`)을 그대로 이식하고, 그 위에 float32 전용 텐서
+마샬링 레이어를 새로 짰다. `core/contracts.dart`에 `InferenceRunner` 추상 인터페이스를
+추가해 `TfliteRunner`/`TfliteFfiRunner` 둘 다 구현하도록 — 나중에 QNN 러너를 붙일 자리.
+
+**검증 결과**:
+- `dart analyze`(독립 Dart SDK, `~/tools/dart-standalone/`)로 `facekit_core` 무오류 —
+  Flutter 의존 0을 실측으로 재확인.
+- `dart test`(같은 독립 SDK)로 110개 중 106개 통과. 실패 4개(`blazeface_smoke_test`,
+  `yunet_smoke_test`×2, `face_landmarker_smoke_test`)는 리팩터 이전과 **동일한 4개**이고
+  원인도 동일(이 환경에 `libtensorflowlite_c.so`가 없음) — 회귀 아님, CI의 기존
+  제외 목록과 같은 성격의 gap(`yunet_smoke_test.dart`는 CI 제외 목록에 빠져 있던 걸
+  같이 고쳤다 — `.github/workflows/test.yml`).
+- `flutter analyze`/`flutter test`(outer) 무오류, `flutter build apk --debug`
+  (example) 성공 — 안드로이드 경로 무회귀.
+
+**아직 안 한 것**: x86_64/arm64용 `libtensorflowlite_c.so` 자체를 구하거나 빌드하는
+일 — tflite_flutter 공식 문서 자체가 "리눅스는 프리빌드 없음, Bazel/CMake로 직접
+빌드"라고 명시한다. 원래 로드맵의 S4("arm64 이동")에서 어차피 필요했던 작업이라 이번
+스코프에서 의도적으로 미뤘다. 지금 코드는 그 라이브러리가 없어도 컴파일·타입체크는
+전부 통과하고, 실제 추론만 그 시점까지 막혀 있다.
