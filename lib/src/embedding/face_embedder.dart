@@ -4,10 +4,9 @@
 
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show kReleaseMode, debugPrint;
-
 import '../core/contracts.dart';
 import '../core/debug_flags.dart';
+import '../core/flutter_shim.dart' show kReleaseMode, debugPrint;
 import '../core/math.dart';
 import '../core/models.dart';
 import '../inference/model_manifest.dart';
@@ -37,12 +36,12 @@ EmbedderAdapter adapterForFamily(String family) {
 }
 
 class TfliteFaceEmbedder implements FaceEmbedder {
-  final TfliteRunner _runner;
+  final InferenceRunner _runner;
   final ModelManifest _manifest;
   final EmbedderAdapter _adapter;
 
   TfliteFaceEmbedder._({
-    required TfliteRunner runner,
+    required InferenceRunner runner,
     required ModelManifest manifest,
     required EmbedderAdapter adapter,
   })  : _runner = runner,

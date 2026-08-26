@@ -7,7 +7,9 @@ import 'dart:io' show File;
 import 'dart:typed_data';
 import 'package:tflite_flutter/tflite_flutter.dart';
 
-class TfliteRunner {
+import '../core/contracts.dart';
+
+class TfliteRunner implements InferenceRunner {
   final Interpreter _interpreter;
 
   TfliteRunner._(this._interpreter);
@@ -45,25 +47,31 @@ class TfliteRunner {
   }
 
   /// Shape of the first input tensor, e.g. [1, 128, 128, 3].
+  @override
   List<int> get inputShape => _interpreter.getInputTensors().first.shape;
 
   /// Shape of the i-th output tensor.
+  @override
   List<int> outputShape(int index) => _interpreter.getOutputTensors()[index].shape;
 
   /// Number of output tensors.
+  @override
   int get outputCount => _interpreter.getOutputTensors().length;
 
   /// Runs the model with a single input and single output.
+  @override
   void run(Object input, Object output) {
     _interpreter.run(input, output);
   }
 
   /// Runs the model with a single input and multiple outputs.
   /// [outputs] maps output-tensor-index → pre-allocated buffer.
+  @override
   void runForMultipleOutputs(Object input, Map<int, Object> outputs) {
     _interpreter.runForMultipleInputs([input], outputs);
   }
 
+  @override
   void close() => _interpreter.close();
 }
 

@@ -63,3 +63,29 @@ abstract class TemplateStore {
   Future<List<Enrollment>> loadAll();
   Future<void> delete(String id);
 }
+
+// ── Inference ──────────────────────────────────────────────────────────────
+// Runtime-neutral model-runner contract. Detection/embedding/landmark layers
+// depend on this, not on any concrete engine (tflite_flutter, a pure-Dart
+// FFI runner, or a future QNN/ORT runner) — keeps those layers importable
+// from a plain Dart context (see doc/KR/linux_port_scope.md).
+
+abstract class InferenceRunner {
+  /// Shape of the first input tensor, e.g. [1, 128, 128, 3].
+  List<int> get inputShape;
+
+  /// Shape of the i-th output tensor.
+  List<int> outputShape(int index);
+
+  /// Number of output tensors.
+  int get outputCount;
+
+  /// Runs the model with a single input and single output.
+  void run(Object input, Object output);
+
+  /// Runs the model with a single input and multiple outputs.
+  /// [outputs] maps output-tensor-index → pre-allocated buffer.
+  void runForMultipleOutputs(Object input, Map<int, Object> outputs);
+
+  void close();
+}

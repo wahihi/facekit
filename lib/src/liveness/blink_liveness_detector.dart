@@ -19,7 +19,7 @@
 // ordered [outerCorner, upperOuter, upperInner, innerCorner, lowerInner,
 // lowerOuter] to match core/math.dart's eyeAspectRatio() point order.
 
-import 'package:flutter/foundation.dart' show debugPrint;
+import '../core/flutter_shim.dart' show debugPrint;
 
 import '../core/contracts.dart';
 import '../core/debug_flags.dart';

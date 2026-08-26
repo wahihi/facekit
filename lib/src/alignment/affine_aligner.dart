@@ -10,7 +10,7 @@
 
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
+import '../core/flutter_shim.dart' show debugPrint, visibleForTesting;
 import '../core/debug_flags.dart';
 import '../core/models.dart';
 import '../core/contracts.dart';

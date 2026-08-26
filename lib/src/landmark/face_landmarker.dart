@@ -14,10 +14,9 @@
 //   .tflite extracted from the official face_landmarker.task bundle — see
 //   assets/models/face_landmark_478/manifest.json for provenance.
 
-import 'package:flutter/foundation.dart' show debugPrint, kReleaseMode;
-
 import '../core/contracts.dart';
 import '../core/debug_flags.dart';
+import '../core/flutter_shim.dart' show debugPrint, kReleaseMode;
 import '../core/models.dart';
 import '../image/image_converter.dart';
 import '../inference/model_manifest.dart';
@@ -32,12 +31,12 @@ import '../inference/tflite_runner.dart';
 const double _cropMarginFraction = 0.25;
 
 class MediaPipeFaceLandmarker implements FaceLandmarker {
-  final TfliteRunner _runner;
+  final InferenceRunner _runner;
   final int _inputWidth;
   final int _inputHeight;
 
   MediaPipeFaceLandmarker._({
-    required TfliteRunner runner,
+    required InferenceRunner runner,
     required int inputWidth,
     required int inputHeight,
   })  : _runner = runner,

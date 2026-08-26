@@ -4,7 +4,7 @@
 
 import 'dart:convert' show base64Encode;
 import 'dart:isolate';
-import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+import '../core/flutter_shim.dart' show debugPrint, kDebugMode;
 import '../core/contracts.dart';
 import '../core/debug_flags.dart';
 import '../core/models.dart';

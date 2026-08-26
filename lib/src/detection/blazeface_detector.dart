@@ -14,9 +14,8 @@
 //   MediaPipe face detection module (Apache 2.0):
 //   https://github.com/google/mediapipe/tree/master/mediapipe/modules/face_detection
 
-import 'package:flutter/foundation.dart' show kReleaseMode;
-
 import '../core/contracts.dart';
+import '../core/flutter_shim.dart' show kReleaseMode;
 import '../core/models.dart';
 import '../image/image_converter.dart';
 import '../inference/model_manifest.dart';
@@ -25,12 +24,12 @@ import 'blazeface_anchors.dart';
 import 'blazeface_decoder.dart';
 
 class BlazeFaceDetector implements FaceDetector {
-  final TfliteRunner _runner;
+  final InferenceRunner _runner;
   final DetectionSpec _spec;
   final List<Anchor> _anchors;
 
   BlazeFaceDetector._({
-    required TfliteRunner runner,
+    required InferenceRunner runner,
     required DetectionSpec spec,
     required List<Anchor> anchors,
   })  : _runner = runner,

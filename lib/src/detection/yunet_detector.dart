@@ -38,10 +38,9 @@
 //   YuNet (libfacedetection / OpenCV Zoo, MIT licence):
 //   https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet
 
-import 'package:flutter/foundation.dart' show debugPrint, kReleaseMode;
-
 import '../core/contracts.dart';
 import '../core/debug_flags.dart';
+import '../core/flutter_shim.dart' show debugPrint, kReleaseMode;
 import '../core/models.dart';
 import '../image/image_converter.dart';
 import '../inference/model_manifest.dart';
@@ -75,7 +74,7 @@ class _StrideIo {
   });
 }
 
-Map<int, _StrideIo> _resolveStrideIo(TfliteRunner runner, int inputSize) {
+Map<int, _StrideIo> _resolveStrideIo(InferenceRunner runner, int inputSize) {
   final bboxByStride = <int, int>{};
   final kpsByStride = <int, int>{};
   final scoresByStride = <int, List<int>>{};
@@ -139,13 +138,13 @@ Map<int, _StrideIo> _resolveStrideIo(TfliteRunner runner, int inputSize) {
 }
 
 class YuNetDetector implements FaceDetector {
-  final TfliteRunner _runner;
+  final InferenceRunner _runner;
   final DetectionSpec _spec;
   final int _inputSize;
   final Map<int, _StrideIo> _strideIo;
 
   YuNetDetector._({
-    required TfliteRunner runner,
+    required InferenceRunner runner,
     required DetectionSpec spec,
     required int inputSize,
     required Map<int, _StrideIo> strideIo,
@@ -181,7 +180,7 @@ class YuNetDetector implements FaceDetector {
   }
 
   static YuNetDetector _build({
-    required TfliteRunner runner,
+    required InferenceRunner runner,
     required ModelManifest manifest,
   }) {
     final inputSize = manifest.input.width;
