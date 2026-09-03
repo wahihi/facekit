@@ -57,11 +57,15 @@ class TfliteFaceEmbedder implements FaceEmbedder {
     required String tflitePath,
     required ModelManifest manifest,
     String? tfliteLibraryPath,
+    int numThreads = 1,
   }) {
     manifest.validate();
     manifest.assertLoadable(isReleaseBuild: kReleaseMode);
-    final runner =
-        TfliteFfiRunner.fromFile(tflitePath, libraryPath: tfliteLibraryPath);
+    final runner = TfliteFfiRunner.fromFile(
+      tflitePath,
+      libraryPath: tfliteLibraryPath,
+      numThreads: numThreads,
+    );
     return withRunner(runner: runner, manifest: manifest);
   }
 

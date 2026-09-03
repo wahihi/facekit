@@ -38,6 +38,7 @@ Future<void> main(List<String> arguments) async {
     ..addOption('embedder', help: 'manifest.json + .tflite가 있는 임베더 모델 디렉토리')
     ..addOption('tflite-library', help: 'libtensorflowlite_c 경로 (미지정 시 FACEKIT_TFLITE_C_LIBRARY 환경변수 또는 실행파일 옆 기본 경로)')
     ..addOption('bench', help: '단발 실행 대신, 같은 이미지/모델로 N회 반복해 단계별 ms 통계 출력 (워밍업 3회 별도)')
+    ..addOption('num-threads', defaultsTo: '1', help: 'TFLite 인터프리터 CPU 스레드 수')
     ..addFlag('help', abbr: 'h', negatable: false);
 
   final ArgResults args;
@@ -61,6 +62,11 @@ Future<void> main(List<String> arguments) async {
   }
 
   final benchArg = args['bench'] as String?;
+  final numThreads = int.tryParse(args['num-threads'] as String) ?? 1;
+  if (numThreads < 1) {
+    stderr.writeln('--num-threads는 1 이상의 정수여야 함: ${args['num-threads']}');
+    exit(64);
+  }
 
   try {
     if (benchArg != null) {
@@ -75,6 +81,7 @@ Future<void> main(List<String> arguments) async {
         embedderDir: args['embedder'] as String,
         libraryPath: args['tflite-library'] as String?,
         iterations: iterations,
+        numThreads: numThreads,
       );
       stdout.writeln(jsonEncode({'bench': result.toJson()}));
     } else {
@@ -83,6 +90,7 @@ Future<void> main(List<String> arguments) async {
         detectorDir: args['detector'] as String,
         embedderDir: args['embedder'] as String,
         libraryPath: args['tflite-library'] as String?,
+        numThreads: numThreads,
       );
       stdout.writeln(jsonEncode({'faces': results.map((r) => r.toJson()).toList()}));
     }

@@ -41,6 +41,7 @@ Future<List<FaceResult>> runDetectAlignEmbed({
   required String detectorDir,
   required String embedderDir,
   String? libraryPath,
+  int numThreads = 1,
 }) async {
   final image = decodeImageFile(imagePath);
 
@@ -51,11 +52,13 @@ Future<List<FaceResult>> runDetectAlignEmbed({
     tflitePath: '$detectorDir/${detectorManifest.file}',
     manifest: detectorManifest,
     tfliteLibraryPath: libraryPath,
+    numThreads: numThreads,
   );
   final embedder = TfliteFaceEmbedder.fromFile(
     tflitePath: '$embedderDir/${embedderManifest.file}',
     manifest: embedderManifest,
     tfliteLibraryPath: libraryPath,
+    numThreads: numThreads,
   );
   final aligner = AffineAligner.arcface112(nativeFivePoint: true);
 
@@ -153,6 +156,7 @@ Future<BenchResult> runBenchmark({
   String? libraryPath,
   required int iterations,
   int warmup = 3,
+  int numThreads = 1,
 }) async {
   final image = decodeImageFile(imagePath);
 
@@ -163,11 +167,13 @@ Future<BenchResult> runBenchmark({
     tflitePath: '$detectorDir/${detectorManifest.file}',
     manifest: detectorManifest,
     tfliteLibraryPath: libraryPath,
+    numThreads: numThreads,
   );
   final embedder = TfliteFaceEmbedder.fromFile(
     tflitePath: '$embedderDir/${embedderManifest.file}',
     manifest: embedderManifest,
     tfliteLibraryPath: libraryPath,
+    numThreads: numThreads,
   );
   final aligner = AffineAligner.arcface112(nativeFivePoint: true);
 
