@@ -22,6 +22,7 @@
 // face, and gates enroll/identify on `BlinkLivenessDetector` passing first —
 // holding up a static photo never blinks, so it never reaches the matcher.
 import 'dart:async' show unawaited;
+import 'dart:convert' show jsonEncode;
 import 'dart:math' as math;
 import 'dart:ui' as ui show Rect;
 
@@ -29,6 +30,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show Clipboard, ClipboardData, DeviceOrientation, rootBundle;
+import 'package:image/image.dart' as img;
 
 import 'package:facekit/facekit.dart';
 
@@ -143,6 +145,7 @@ class _RecognitionPageState extends State<RecognitionPage> {
   // reference across frames is safe (the camera plugin can't mutate it).
   FaceImage? _lastFaceImage;
   bool _benchmarking = false;
+  bool _dumpingGolden = false;
 
   // Logged-value cache purely for debugPrint de-duplication below — keeps
   // `flutter logs` readable by printing only on transitions, not every frame.
@@ -744,6 +747,90 @@ class _RecognitionPageState extends State<RecognitionPage> {
     }
   }
 
+  /// TEMPORARY (S3 golden-vector cross-platform check, see
+  /// doc/KR/linux_port_scope.md) — loads the same photo facekit_cli ran on
+  /// Linux (assets/golden/me_1.jpg, sourced from
+  /// tool/model_verification/me_1.jpg) through this device's own
+  /// detect→align→embed pipeline, then shows the result as JSON (with a
+  /// copy button) so it can be pasted straight into the Linux-side cosine
+  /// comparison without needing adb/logcat. Remove once that comparison is
+  /// done and recorded.
+  Future<void> _dumpGoldenVector() async {
+    final pipeline = _pipeline;
+    if (pipeline == null) {
+      _setStatus('모델이 아직 로딩 중입니다.');
+      return;
+    }
+
+    setState(() => _dumpingGolden = true);
+    _setStatus('골든 벡터 추출 중...');
+    try {
+      final bytes = await rootBundle.load('assets/golden/me_1.jpg');
+      final decoded = img.decodeImage(bytes.buffer.asUint8List());
+      if (decoded == null) {
+        _setStatus('골든 이미지 디코딩 실패');
+        return;
+      }
+      final rgb = decoded.convert(numChannels: 3);
+      final image = FaceImage(
+        rgbBytes: rgb.getBytes(order: img.ChannelOrder.rgb),
+        width: rgb.width,
+        height: rgb.height,
+      );
+
+      final faces = await pipeline.detector.detect(image);
+      if (faces.isEmpty) {
+        _setStatus('골든 이미지에서 얼굴을 못 찾음');
+        return;
+      }
+      final best = faces.reduce((a, b) => a.score >= b.score ? a : b);
+      final aligned = pipeline.aligner.align(image, best);
+      if (aligned == null) {
+        _setStatus('골든 이미지 정렬 실패(포즈 게이트)');
+        return;
+      }
+      final embedding = await pipeline.embedder.embed(aligned);
+
+      final box = best.boundingBox;
+      final reportText = jsonEncode({
+        'faces': [
+          {
+            'bbox': [box.left, box.top, box.right, box.bottom],
+            'score': best.score,
+            'embedding': embedding.vector,
+          },
+        ],
+      });
+
+      if (!mounted) return;
+      _setStatus('골든 벡터 추출 완료');
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('골든 벡터 (assets/golden/me_1.jpg)'),
+          content: SelectableText(reportText),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: reportText));
+                _setStatus('결과를 클립보드에 복사했어요.');
+              },
+              child: const Text('복사'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('닫기'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      _setStatus('골든 벡터 추출 실패: $e');
+    } finally {
+      if (mounted) setState(() => _dumpingGolden = false);
+    }
+  }
+
   @override
   void dispose() {
     _controller?.dispose();
@@ -897,6 +984,11 @@ class _RecognitionPageState extends State<RecognitionPage> {
         OutlinedButton(
           onPressed: (_pipeline == null || _benchmarking) ? null : _runBenchmark,
           child: Text(_benchmarking ? '벤치마크 실행 중...' : '벤치마크 실행'),
+        ),
+        // TEMPORARY — S3 골든 벡터 크로스플랫폼 비교용, doc/KR/linux_port_scope.md.
+        OutlinedButton(
+          onPressed: (_pipeline == null || _dumpingGolden) ? null : _dumpGoldenVector,
+          child: Text(_dumpingGolden ? '골든 벡터 추출 중...' : '골든 벡터 덤프 (S3)'),
         ),
       ],
     );

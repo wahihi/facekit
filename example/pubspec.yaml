@@ -36,6 +36,10 @@ dependencies:
 
   camera: ^0.11.0+2
 
+  # JPEG decode for the temporary golden-vector dump feature (S3 cross-
+  # platform regression check) — see _dumpGoldenVector in main.dart.
+  image: ^4.2.0
+
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
@@ -69,6 +73,7 @@ flutter:
   assets:
     - assets/models/arcface_buffalo_l/
     - assets/models/auraface/
+    - assets/golden/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
