@@ -215,3 +215,22 @@ YuNet 검출(bbox score 0.92~0.95) + AuraFace 임베딩이 실제로 올바르�
 바이너리와 테스트가 같은 코드를 쓰도록 리팩터 — CLI 자체 동작은 무변경.
 
 **S3 완료.** 다음은 S4(Q6A/arm64 이동).
+
+## S4 완료 (2026-09-03)
+
+코드를 tar.gz + USB로 보드에 옮김(이 환경에서 보드로 직접 scp/ping이 안 됨 — VirtualBox NAT
+어댑터가 인터넷은 되지만 같은 물리 LAN의 다른 기기로는 못 나감). 보드에서 x86_64 때와 같은
+레시피(태그 `v2.21.0-rc0` 고정 + `TENSORFLOW_SOURCE_DIR` 오버라이드)로 arm64용
+`libtensorflowlite_c.so` 빌드 — 중간에 `g++`가 없어서 한 번 막혔다가(`sudo apt install
+build-essential`로 해결) 이후 성공.
+
+- **DoD #1 (골든 벡터 arm64 재검증)**: `dart test` 전체 통과 — arm64에서도 안드로이드 실기기
+  값과 일치.
+- **DoD #2 (실측 벤치마크)**: [doc/KR/benchmark_q6a.md](benchmark_q6a.md) — 싱글스레드
+  721ms → A78 4코어 멀티스레드 350ms. **결론: NPU 없이 CPU만으로 상용 기준(체감 지연
+  0.5초 이내) 통과, QNN/INT8 투자 근거 없음.**
+
+이 발견에 맞춰 `YuNetDetector.fromFile`/`TfliteFaceEmbedder.fromFile`/`TfliteFfiRunner`에
+`numThreads` 옵션과 `facekit_cli --num-threads`를 추가(기본값 1, 기존 동작 무변경).
+
+**S4 완료.** 다음은 S5(V4L2 카메라 캡처).
