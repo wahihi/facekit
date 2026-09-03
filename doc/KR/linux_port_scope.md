@@ -189,3 +189,29 @@ YuNet 검출(bbox score 0.92~0.95) + AuraFace 임베딩이 실제로 올바르�
 플랫폼별 버그를 잡기 위한 것). 이건 안드로이드 실기기에서 이 세 사진(또는 아무 사진)을 같은
 파이프라인으로 돌린 실제 임베딩값이 있어야 비교할 수 있어서, 이 세션 안에서는 못 끝낸다 —
 종화님 Pixel 7에서 한 번 돌려주셔야 하는 부분.
+
+## S3 DoD 통과 (2026-09-03)
+
+`example/`에 임시 "골든 벡터 덤프" 버튼을 추가(`_dumpGoldenVector`, `assets/golden/me_1.jpg` —
+`tool/model_verification/me_1.jpg`와 바이트 동일) — Pixel 7 실기기에서 눌러서 JSON을 클립보드로
+바로 복사해 받았다(adb/logcat 불필요). 같은 사진을 리눅스 `facekit_cli`로도 돌려서 비교:
+
+| | 값 |
+|---|---|
+| 코사인 유사도 | **0.99999991** |
+| bbox 차이 | 소수점 4자리 수준(부동소수점 반올림 오차) |
+| score | 완전히 동일 (0.9324665440) |
+
+기준(≥0.999)을 크게 상회 — **S3 DoD 통과.** 안드로이드와 리눅스가 회전·채널 순서·정규화 순서
+전부 일치한다는 뜻.
+
+이 안드로이드 임베딩을 `packages/facekit_cli/test/fixtures/me_1_android_golden.json`에 커밋해서
+`packages/facekit_cli/test/golden_vector_test.dart` 회귀 테스트로 고정했다 — 이후 파이프라인을
+건드릴 때마다 리눅스 쪽이 이 실기기 값에서 벗어나지 않는지 계속 검증된다. CI에는 다른
+모델-로딩 테스트들과 같은 이유(이 환경에 `libtensorflowlite_c.so` 없음)로 실행 단계는 아직
+안 넣었고, `pub get`/`dart analyze`만 넣어뒀다.
+
+`bin/facekit_cli.dart`의 로직을 `lib/facekit_cli.dart`(`runDetectAlignEmbed`)로 뽑아서
+바이너리와 테스트가 같은 코드를 쓰도록 리팩터 — CLI 자체 동작은 무변경.
+
+**S3 완료.** 다음은 S4(Q6A/arm64 이동).

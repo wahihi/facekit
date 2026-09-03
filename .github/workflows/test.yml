@@ -57,6 +57,18 @@ jobs:
             ! -name 'face_landmarker_smoke_test.dart')
         working-directory: packages/facekit_core
 
+      # facekit_cli's only test (golden_vector_test.dart, the S3 Linux/Android
+      # cross-platform check) also needs libtensorflowlite_c.so — same gap
+      # as above, so it isn't run here either. pub get + analyze still catch
+      # basic breakage (bad imports, API drift against facekit_core).
+      - name: facekit_cli package — pub get
+        run: dart pub get
+        working-directory: packages/facekit_cli
+
+      - name: facekit_cli package — dart analyze
+        run: dart analyze
+        working-directory: packages/facekit_cli
+
       - name: example app — pub get
         run: flutter pub get
         working-directory: example
