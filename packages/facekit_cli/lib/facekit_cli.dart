@@ -8,6 +8,9 @@ import 'package:image/image.dart' as img;
 
 import 'package:facekit_core/facekit_core.dart';
 
+export 'src/frame_source.dart';
+export 'src/v4l2_frame_source.dart';
+
 class FaceResult {
   final List<double> bbox; // [left, top, right, bottom]
   final double score;

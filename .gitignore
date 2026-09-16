@@ -67,6 +67,11 @@ example/log*.txt
 /pubspec.lock
 tool/probe/pubspec.lock
 packages/facekit_core/pubspec.lock
+
+# Native build output — platform-specific, built via native/build.sh
+# (same reasoning as not committing libtensorflowlite_c.so).
+packages/facekit_cli/native/*.so
+
 **/doc/api/
 .dart_tool/
 .flutter-plugins-dependencies

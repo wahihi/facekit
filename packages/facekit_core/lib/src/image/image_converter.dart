@@ -3,6 +3,7 @@
 // Supported formats:
 //   YUV420 (yuv420_888) — standard Android camera2 output
 //   BGRA8888             — standard iOS / macOS AVFoundation output
+//   YUYV422              — standard V4L2/UVC webcam output (Linux)
 //
 // Source: camera plugin documentation + ITU-R BT.601 YCbCr→RGB coefficients.
 // Pure Dart — no Flutter / dart:ui import.
@@ -55,6 +56,50 @@ FaceImage yuv420ToFaceImage({
   }
 
   return FaceImage(rgbBytes: rgb, width: width, height: height);
+}
+
+/// Converts a YUYV422 (aka YUY2 / V4L2_PIX_FMT_YUYV) camera frame to
+/// [FaceImage] — the format V4L2/UVC webcams (e.g. the Logitech C270 used
+/// for Q6A development) report. Interleaved 4 bytes per 2 pixels: Y0 U Y1 V,
+/// the two pixels sharing one U/V sample pair (4:2:2 chroma subsampling).
+///
+/// [yuyv] must be `width * height * 2` bytes; [width] must be even (every
+/// V4L2_PIX_FMT_YUYV mode is, since the format is defined in 2-pixel units).
+FaceImage yuyv422ToFaceImage({
+  required Uint8List yuyv,
+  required int width,
+  required int height,
+}) {
+  final rgb = Uint8List(width * height * 3);
+  final pairsPerRow = width ~/ 2;
+
+  for (int row = 0; row < height; row++) {
+    final rowStart = row * width * 2;
+    for (int pair = 0; pair < pairsPerRow; pair++) {
+      final base = rowStart + pair * 4;
+      final y0 = yuyv[base] & 0xFF;
+      final u = yuyv[base + 1] & 0xFF;
+      final y1 = yuyv[base + 2] & 0xFF;
+      final v = yuyv[base + 3] & 0xFF;
+
+      final uShifted = u - 128;
+      final vShifted = v - 128;
+
+      final outBase = (row * width + pair * 2) * 3;
+      _writeYuvPixel(rgb, outBase, y0, uShifted, vShifted);
+      _writeYuvPixel(rgb, outBase + 3, y1, uShifted, vShifted);
+    }
+  }
+
+  return FaceImage(rgbBytes: rgb, width: width, height: height);
+}
+
+/// ITU-R BT.601 full-range YCbCr → RGB, writing 3 bytes at [outIdx].
+void _writeYuvPixel(Uint8List rgb, int outIdx, int y, int uShifted, int vShifted) {
+  final yShifted = y - 16;
+  rgb[outIdx] = (1.164 * yShifted + 1.596 * vShifted).round().clamp(0, 255);
+  rgb[outIdx + 1] = (1.164 * yShifted - 0.392 * uShifted - 0.813 * vShifted).round().clamp(0, 255);
+  rgb[outIdx + 2] = (1.164 * yShifted + 2.017 * uShifted).round().clamp(0, 255);
 }
 
 /// Converts a BGRA8888 camera frame to [FaceImage].

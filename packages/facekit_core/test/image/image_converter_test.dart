@@ -70,6 +70,43 @@ void main() {
     });
   });
 
+  group('yuyv422ToFaceImage', () {
+    test('pure Y (grey) → grey RGB', () {
+      const w = 4, h = 2;
+      final yuyv = Uint8List(w * h * 2);
+      for (int i = 0; i < yuyv.length; i += 4) {
+        yuyv[i] = 128; // Y0
+        yuyv[i + 1] = 128; // U
+        yuyv[i + 2] = 128; // Y1
+        yuyv[i + 3] = 128; // V
+      }
+      final img = yuyv422ToFaceImage(yuyv: yuyv, width: w, height: h);
+      expect(img.width, w);
+      expect(img.height, h);
+      expect(img.rgbBytes.length, w * h * 3);
+      final r = img.rgbBytes[0], g = img.rgbBytes[1], b = img.rgbBytes[2];
+      expect((r - g).abs(), lessThan(5));
+      expect((g - b).abs(), lessThan(5));
+    });
+
+    test('the two pixels sharing a U/V pair each get their own Y sample', () {
+      // One pair: Y0=16 (near-black), U=128, Y1=235 (near-white), V=128.
+      // Catches a bug class where both output pixels reuse the same Y.
+      final yuyv = Uint8List.fromList([16, 128, 235, 128]);
+      final img = yuyv422ToFaceImage(yuyv: yuyv, width: 2, height: 1);
+      expect(img.rgbBytes[0], lessThan(img.rgbBytes[3]));
+    });
+
+    test('output dimensions match', () {
+      const w = 8, h = 6;
+      final yuyv = Uint8List(w * h * 2);
+      final img = yuyv422ToFaceImage(yuyv: yuyv, width: w, height: h);
+      expect(img.width, w);
+      expect(img.height, h);
+      expect(img.rgbBytes.length, w * h * 3);
+    });
+  });
+
   group('resizeNearest', () {
     test('2×2 → 1×1 picks top-left pixel', () {
       final rgb = Uint8List.fromList([
