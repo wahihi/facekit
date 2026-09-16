@@ -97,6 +97,24 @@ void main() {
       expect(img.rgbBytes[0], lessThan(img.rgbBytes[3]));
     });
 
+    test('throws on a short/corrupt buffer instead of reading out of bounds', () {
+      // Real failure mode seen on the Q6A board's C270 over V4L2: an
+      // occasional frame a few bytes short of a full YUYV422 frame (a
+      // dropped USB packet) — see doc/KR/linux_port_scope.md, S5b.
+      final tooShort = Uint8List(4 * 2 * 2 - 4);
+      expect(
+        () => yuyv422ToFaceImage(yuyv: tooShort, width: 4, height: 2),
+        throwsArgumentError,
+      );
+    });
+
+    test('throws on an odd width', () {
+      expect(
+        () => yuyv422ToFaceImage(yuyv: Uint8List(30), width: 5, height: 2),
+        throwsArgumentError,
+      );
+    });
+
     test('output dimensions match', () {
       const w = 8, h = 6;
       final yuyv = Uint8List(w * h * 2);

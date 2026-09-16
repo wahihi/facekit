@@ -63,13 +63,31 @@ FaceImage yuv420ToFaceImage({
 /// for Q6A development) report. Interleaved 4 bytes per 2 pixels: Y0 U Y1 V,
 /// the two pixels sharing one U/V sample pair (4:2:2 chroma subsampling).
 ///
-/// [yuyv] must be `width * height * 2` bytes; [width] must be even (every
-/// V4L2_PIX_FMT_YUYV mode is, since the format is defined in 2-pixel units).
+/// [yuyv] must be exactly `width * height * 2` bytes; [width] must be even
+/// (every V4L2_PIX_FMT_YUYV mode is, since the format is defined in 2-pixel
+/// units). Throws [ArgumentError] otherwise — callers reading frames off a
+/// real camera should check the byte count themselves and skip/drop a
+/// short frame rather than pass it in: cheap USB UVC cameras occasionally
+/// deliver a frame a few bytes short (a dropped USB packet), observed in
+/// practice on the Q6A board's Logitech C270 (see doc/KR/
+/// linux_port_scope.md, S5b) — a real capture-time event, not something
+/// this pure conversion function should paper over by guessing.
 FaceImage yuyv422ToFaceImage({
   required Uint8List yuyv,
   required int width,
   required int height,
 }) {
+  if (width.isOdd) {
+    throw ArgumentError('yuyv422ToFaceImage: width must be even, got $width');
+  }
+  final expectedLength = width * height * 2;
+  if (yuyv.length != expectedLength) {
+    throw ArgumentError(
+      'yuyv422ToFaceImage: expected $expectedLength bytes for '
+      '${width}x$height YUYV422, got ${yuyv.length}',
+    );
+  }
+
   final rgb = Uint8List(width * height * 3);
   final pairsPerRow = width ~/ 2;
 

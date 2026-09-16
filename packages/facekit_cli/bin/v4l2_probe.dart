@@ -67,6 +67,7 @@ Future<void> main(List<String> arguments) async {
   var framesSeen = 0;
   var facesFound = 0;
   var drops = 0;
+  var corruptFrames = 0;
   int? lastSequence;
   var savedFirstFrame = false;
   final rssStart = ProcessInfo.currentRss;
@@ -91,6 +92,25 @@ Future<void> main(List<String> arguments) async {
       final rss = ProcessInfo.currentRss;
       if (rss > rssMax) rssMax = rss;
 
+      final expectedBytes = frame.width * frame.height * 2;
+      if (frame.bytes.length != expectedBytes) {
+        // Occasionally seen on the C270 over V4L2: a frame a few bytes
+        // short of a full YUYV422 frame (a dropped USB packet) — a real
+        // capture-time event, not a bug to crash on. Count it separately
+        // from V4L2 sequence-counter drops and move on to the next frame.
+        corruptFrames++;
+        stderr.writeln(
+          '프레임 $framesSeen (seq=${frame.sequence}): 손상된 프레임, 건너뜀 '
+          '(기대 $expectedBytes bytes, 실제 ${frame.bytes.length} bytes)',
+        );
+        if (sw.elapsed.inSeconds >= seconds) {
+          if (!done.isCompleted) done.complete();
+        } else {
+          sub.resume();
+        }
+        return;
+      }
+
       final image = yuyv422ToFaceImage(yuyv: frame.bytes, width: frame.width, height: frame.height);
 
       if (!savedFirstFrame && args['save-frame'] != null) {
@@ -106,7 +126,7 @@ Future<void> main(List<String> arguments) async {
       if (framesSeen % 10 == 0) {
         stderr.writeln(
           '프레임 $framesSeen (seq=${frame.sequence}) rss=${(rss / 1024 / 1024).toStringAsFixed(1)}MB '
-          '누적 얼굴검출=$facesFound 누적드롭=$drops',
+          '누적 얼굴검출=$facesFound 누적드롭=$drops 누적손상=$corruptFrames',
         );
       }
 
@@ -133,6 +153,7 @@ Future<void> main(List<String> arguments) async {
     'fps': framesSeen / elapsedS,
     'faces_found': facesFound,
     'dropped_frames': drops,
+    'corrupt_frames': corruptFrames,
     'rss_start_mb': rssStart / 1024 / 1024,
     'rss_max_mb': rssMax / 1024 / 1024,
     'rss_growth_mb': (rssMax - rssStart) / 1024 / 1024,
