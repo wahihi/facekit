@@ -75,12 +75,17 @@ class V4l2FrameSource implements FrameSource {
     final scratch = _scratch ??= calloc<Uint8>(_frameSize);
     final sequenceOut = _sequenceOut ??= calloc<Uint32>();
     while (!_closed) {
-      final n = _bindings.readFrame(_capture, scratch, 1000, sequenceOut);
+      final n = _bindings.readFrame(_capture, scratch, 100, sequenceOut);
       if (_closed) break;
       if (n < 0) {
         throw StateError('V4L2 프레임 읽기 실패 (code $n)');
       }
-      if (n == 0) continue; // poll() timeout, no frame ready yet — retry
+      if (n == 0) {
+        // Yield so duration timers and stop signals run even when no camera
+        // frames arrive.
+        await Future<void>.delayed(Duration.zero);
+        continue;
+      }
 
       yield RawFrame(
         // Copy out of the scratch buffer — it's reused (and may be
