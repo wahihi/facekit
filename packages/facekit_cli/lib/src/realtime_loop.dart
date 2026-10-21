@@ -162,6 +162,7 @@ Future<RealtimeStats> runRealtimeLoop({
   int? lastSequence;
   final completer = Completer<void>();
   late StreamSubscription<RawFrame> sub;
+  final loopStopwatch = Stopwatch()..start();
   var frameInProgress = false;
   var stopRequestedInternally = false;
 
@@ -180,6 +181,9 @@ Future<RealtimeStats> runRealtimeLoop({
 
   void finishFrame() {
     frameInProgress = false;
+    if (duration != null && loopStopwatch.elapsed >= duration) {
+      stopRequestedInternally = true;
+    }
     final stopped = stopRequestedInternally || (stopRequested?.call() ?? false);
     if (stopped) {
       complete();

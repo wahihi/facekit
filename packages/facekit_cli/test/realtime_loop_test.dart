@@ -288,6 +288,35 @@ void main() {
     await source.close();
   });
 
+  test('duration expires during a frame and stops after that frame', () async {
+    final detector = _BlockingDetector();
+    final loop = runRealtimeLoop(
+      source: FakeFrameSource([
+        for (var sequence = 1; sequence <= 3; sequence++)
+          RawFrame(
+            bytes: Uint8List(16),
+            width: 2,
+            height: 2,
+            format: PixelFormat.bgra8888,
+            sequence: sequence,
+          ),
+      ]),
+      detector: detector,
+      aligner: _UnusedAligner(),
+      embedder: _UnusedEmbedder(),
+      matcher: _UnusedMatcher(),
+      gallery: const [],
+      duration: const Duration(milliseconds: 10),
+    );
+
+    await detector.started.future;
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    detector.release.complete();
+
+    final stats = await loop;
+    expect(stats.framesSeen, 1);
+  });
+
   test('stopSignal stops an idle source cleanly', () async {
     final source = _IdleFrameSource();
     final stopSignal = Completer<void>();
