@@ -114,6 +114,12 @@ else
   bash "${repo_root}/packages/facekit_cli/native/build.sh"
 fi
 
+# --- 4b. 테스트 입력 사진 (tool/model_verification/me_1.jpg 는 gitignore 대상이라 clone 에 없음) ---
+if [[ ! -f "${repo_root}/tool/model_verification/me_1.jpg" ]]; then
+  cp "${repo_root}/example/assets/golden/me_1.jpg" "${repo_root}/tool/model_verification/me_1.jpg"
+  log "me_1.jpg 복사 (example/assets/golden -> tool/model_verification, 동일 파일)"
+fi
+
 # --- 5. AuraFace 가중치 -----------------------------------------------------
 log "AuraFace 가중치 확인/다운로드"
 bash "${repo_root}/tool/fetch_models.sh"
