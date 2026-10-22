@@ -77,3 +77,7 @@ packages/facekit_cli/native/*.so
 .flutter-plugins-dependencies
 /build/
 /coverage/
+
+# Raspberry Pi 4 local setup output (tool/rpi4/setup.sh, bench.sh)
+tool/rpi4/env.sh
+tool/rpi4/results/
