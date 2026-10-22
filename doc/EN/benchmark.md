@@ -15,6 +15,10 @@ facekit pipeline. For accuracy (EER) methodology and raw data, see
 > numbers as historical (BlazeFace-specific), not representative of the
 > current default pipeline.
 
+> 📌 **Real-device Linux measurements (YuNet160 + AuraFace R100 fp16, XNNPACK CPU, 4-thread total median):**
+> Q6A (Cortex-A78) **349.8ms** — [benchmark_q6a.md](benchmark_q6a.md) /
+> Raspberry Pi 4 (Cortex-A72) **1254.3ms** — [rpi4_port.md](rpi4_port.md). These, not the VM figures in this document, are the current reference.
+
 ## Measurement environment
 
 Measured on this machine (Linux VM, 2 CPU cores, 27GB RAM) using the TFLite

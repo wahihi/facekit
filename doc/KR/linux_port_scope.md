@@ -1,3 +1,7 @@
+🇺🇸 [English version](../EN/linux_port_scope.md)
+
+---
+
 # Linux(Q6A) 헤드리스 포팅 — S1 의존 경계 실측 (2026-08-26)
 
 `facekit_cli`(Flutter 없이 `dart run`으로 도는 헤드리스 인식 프로세스) 도입 전, "A안 — Dart 유지"가

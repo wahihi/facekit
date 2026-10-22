@@ -1,3 +1,7 @@
+🇺🇸 [English version](../EN/rpi4_port.md)
+
+---
+
 # Raspberry Pi 4 포팅 (`feature/rpi4`) — 2026-10-22
 
 `feature/linux-port`(Q6A, Radxa Dragon QCS6490)에서 분기. 같은 헤드리스 실시간 인식

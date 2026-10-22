@@ -1,3 +1,7 @@
+🇺🇸 [English version](../EN/benchmark_q6a.md)
+
+---
+
 # Q6A(Radxa Dragon, QCS6490) 실측 벤치마크 — 2026-09-03
 
 `packages/facekit_cli`의 `--bench` 옵션으로 실측. 입력은 `tool/model_verification/me_1.jpg`,
