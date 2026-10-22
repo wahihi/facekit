@@ -369,3 +369,15 @@ Q6A(Radxa Dragon Q6A, Linux arm64)에서 `feature/linux-port`의 실시간 인�
    식별 결과가 나오지 않는지 확인하는 실기기 검증은 후속 작업으로 남긴다.
 
 따라서 **Q6A 포팅은 완료**, 위 두 항목은 별도로 남은 실기기 동작 검증으로 기록한다.
+
+## Raspberry Pi 4 분기 (`feature/rpi4`, 2026-10-22)
+
+같은 헤드리스 CLI를 코드 변경 없이 Raspberry Pi 4(Cortex-A72 ×4 @1.8GHz, 64-bit Raspberry Pi OS)에서
+실측했다. 환경 구축·실측은 `tool/rpi4/setup.sh`, `tool/rpi4/bench.sh`로 고정. 상세는
+[rpi4_port.md](rpi4_port.md).
+
+- 골든 벡터 PASS — Pi4에서도 안드로이드 실기기와 같은 임베딩.
+- 4스레드 total **1254.3ms**(Q6A 349.8ms의 약 3.6배). 실카메라(C270) 인식 동작, 메모리 누수 없음.
+- **결론: 기능은 통과, AuraFace R100은 Pi4 실시간 용도에 부적합. Pi4 포팅은 종료.** 경량
+  임베더(SFace 등)는 Pi4만을 위해 붙이지 않고 저사양 대응 작업에서 별도 판단한다.
+- 위 Q6A의 남은 검증 2개(타인 거부, SIGINT)는 Pi4에서도 미확인 — 리눅스 공통 후속 항목.

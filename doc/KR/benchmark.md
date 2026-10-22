@@ -13,6 +13,10 @@ facekit 파이프라인의 추론 속도·모델 크기·정확도를 측정한 
 > 시간은 아직 벤치마크하지 않았습니다 — 아래 수치들은 BlazeFace 시절의
 > 기록으로만 보고, 현재 기본 파이프라인을 대표하는 값으로 보지 마세요.
 
+> 📌 **리눅스 실기기 실측 (YuNet160 + AuraFace R100 fp16, XNNPACK CPU, 4스레드 total median):**
+> Q6A(Cortex-A78) **349.8ms** — [benchmark_q6a.md](benchmark_q6a.md) /
+> Raspberry Pi 4(Cortex-A72) **1254.3ms** — [rpi4_port.md](rpi4_port.md). 이 문서의 VM 수치보다 이쪽이 현재 기준이다.
+
 ## 측정 환경
 
 이 머신(Linux VM, CPU 2코어, RAM 27GB)에서 TFLite Python 인터프리터(XNNPACK 위임,

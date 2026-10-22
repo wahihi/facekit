@@ -49,3 +49,13 @@ YuNet160 + AuraFace R100 fp16, XNNPACK CPU, n=30 median.
   "이미지 파일을 찾을 수 없음"으로 실패. 같은 파일이 `example/assets/golden/me_1.jpg`로 추적되고
   있어, `setup.sh`가 없으면 복사하도록 수정.
 - Pi의 git push는 GitHub 비밀번호 인증이 막혀 있어 SSH 키(ed25519)로 설정.
+
+## 남은 검증
+
+Q6A 포팅 완료 시 남긴 항목(`linux_port_scope.md` 2026-10-21)과 같은 두 가지는 Pi4에서도 미확인이다.
+
+1. **타인 및 얼굴 없음 상황의 식별 거부**: 이번 30초 실행은 등록 인물로 21건 모두 매칭됐다.
+   다른 사람 앞에서 `accepted=false`, 얼굴이 없을 때 식별 결과가 나오지 않는지는 확인하지 않았다.
+2. **SIGINT(Ctrl+C) 정상 종료**: `--seconds`로만 종료했고 Ctrl+C 경로는 실기기에서 확인하지 않았다.
+
+Pi4 포팅을 종료하는 판단에는 영향이 없으므로, Q6A와 함께 리눅스 공통 후속 검증으로 둔다.
